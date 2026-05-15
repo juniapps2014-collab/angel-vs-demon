@@ -1,0 +1,27 @@
+# Cocos Creator
+angel-vs-demon-client/library/
+angel-vs-demon-client/temp/
+angel-vs-demon-client/local/
+angel-vs-demon-client/build/
+angel-vs-demon-client/profiles/
+angel-vs-demon-client/native/
+
+# Node
+angel-vs-demon-client/node_modules/
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Supabase local
+backend/supabase/.branches/
+backend/supabase/.temp/

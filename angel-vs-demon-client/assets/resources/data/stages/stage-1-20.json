@@ -1,0 +1,347 @@
+{
+  "stages": [
+    {
+      "id": 1,
+      "recommendedPower": 100,
+      "enemyCount": 18,
+      "rewardGold": 40,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "center" }
+      ]
+    },
+    {
+      "id": 2,
+      "recommendedPower": 110,
+      "enemyCount": 22,
+      "rewardGold": 50,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "slime", "count": 4}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "smile_zombie", "count": 4}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "slime", "count": 4}], "spawnArea": "center" }
+      ]
+    },
+    {
+      "id": 3,
+      "recommendedPower": 125,
+      "enemyCount": 24,
+      "rewardGold": 60,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "slime", "count": 4}], "spawnArea": "right" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "smile_zombie", "count": 4}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "slime", "count": 6}], "spawnArea": "center" }
+      ]
+    },
+    {
+      "id": 4,
+      "recommendedPower": 140,
+      "enemyCount": 28,
+      "rewardGold": 75,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "bomb_imp", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "bomb_imp", "count": 3}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "bomb_imp", "count": 6}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 5,
+      "recommendedPower": 160,
+      "enemyCount": 30,
+      "rewardGold": 90,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "left" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "right" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "bottom" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 6,
+      "recommendedPower": 180,
+      "enemyCount": 34,
+      "rewardGold": 105,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.2, "enemies": [{"type": "hellhound", "count": 2}], "spawnArea": "top" },
+        { "spawnDelay": 2.0, "enemies": [{"type": "slime", "count": 4}], "spawnArea": "left" },
+        { "spawnDelay": 2.8, "enemies": [{"type": "hellhound", "count": 2}], "spawnArea": "right" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 7,
+      "recommendedPower": 205,
+      "enemyCount": 36,
+      "rewardGold": 120,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "hellhound", "count": 4}], "spawnArea": "top" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "hellhound", "count": 4}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "hellhound", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 8,
+      "recommendedPower": 230,
+      "enemyCount": 38,
+      "rewardGold": 135,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "shield_zombie", "count": 2}], "spawnArea": "front" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "shield_zombie", "count": 2}], "spawnArea": "front" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "hellhound", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "slime", "count": 4}], "spawnArea": "left" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "shield_zombie", "count": 2}], "spawnArea": "right" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "hellhound", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 9,
+      "recommendedPower": 260,
+      "enemyCount": 42,
+      "rewardGold": 150,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "right" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "hellhound", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "shield_zombie", "count": 3}], "spawnArea": "front" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "center" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "elite_jumper", "count": 2}], "spawnArea": "top" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "hellhound", "count": 5}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 10,
+      "recommendedPower": 320,
+      "enemyCount": 48,
+      "rewardGold": 180,
+      "bossId": "boss_clown_zombie",
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 6}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "bomb_imp", "count": 5}], "spawnArea": "right" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "hellhound", "count": 4}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "shield_zombie", "count": 3}], "spawnArea": "front" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "elite_jumper", "count": 2}], "spawnArea": "top" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "hellhound", "count": 4}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 11,
+      "recommendedPower": 350,
+      "enemyCount": 48,
+      "rewardGold": 210,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "hellhound", "count": 5}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "hellhound", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "slime", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "hellhound", "count": 3}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 12,
+      "recommendedPower": 390,
+      "enemyCount": 52,
+      "rewardGold": 230,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "shield_zombie", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "shield_zombie", "count": 3}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "shield_zombie", "count": 3}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "slime", "count": 3}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 13,
+      "recommendedPower": 430,
+      "enemyCount": 60,
+      "rewardGold": 245,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "bomb_imp", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "bomb_imp", "count": 8}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "bomb_imp", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "bomb_imp", "count": 4}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 14,
+      "recommendedPower": 470,
+      "enemyCount": 60,
+      "rewardGold": 280,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "shield_zombie", "count": 4}], "spawnArea": "front" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "back" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "shield_zombie", "count": 4}], "spawnArea": "front" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "left" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "right" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "shield_zombie", "count": 4}], "spawnArea": "center" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "shield_zombie", "count": 4}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 15,
+      "recommendedPower": 520,
+      "enemyCount": 64,
+      "rewardGold": 315,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "elite_jumper", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "elite_jumper", "count": 3}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "shield_zombie", "count": 4}], "spawnArea": "front" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "smile_zombie", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "elite_jumper", "count": 3}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "hellhound", "count": 6}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 16,
+      "recommendedPower": 580,
+      "enemyCount": 70,
+      "rewardGold": 350,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "elite_drummer", "count": 2}], "spawnArea": "top" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "shield_zombie", "count": 5}], "spawnArea": "front" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "elite_drummer", "count": 2}], "spawnArea": "top" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "shield_zombie", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "hellhound", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "elite_drummer", "count": 2}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 17,
+      "recommendedPower": 640,
+      "enemyCount": 76,
+      "rewardGold": 385,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "top" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "bomb_imp", "count": 7}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "bomb_imp", "count": 7}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "elite_jumper", "count": 4}], "spawnArea": "random" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "bomb_imp", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 18,
+      "recommendedPower": 710,
+      "enemyCount": 82,
+      "rewardGold": 420,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "front" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "right" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "bomb_imp", "count": 8}], "spawnArea": "center" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "slime", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "bomb_imp", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 19,
+      "recommendedPower": 790,
+      "enemyCount": 88,
+      "rewardGold": 455,
+      "bossId": null,
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "elite_jumper", "count": 5}], "spawnArea": "top" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "elite_jumper", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "right" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "front" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "random" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "elite_jumper", "count": 5}], "spawnArea": "random" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "random" }
+      ]
+    },
+    {
+      "id": 20,
+      "recommendedPower": 920,
+      "enemyCount": 94,
+      "rewardGold": 540,
+      "bossId": "boss_hell_drummer",
+      "waves": [
+        { "spawnDelay": 0.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 1.5, "enemies": [{"type": "smile_zombie", "count": 8}], "spawnArea": "bottom" },
+        { "spawnDelay": 2.5, "enemies": [{"type": "elite_jumper", "count": 5}], "spawnArea": "left" },
+        { "spawnDelay": 3.5, "enemies": [{"type": "shield_zombie", "count": 6}], "spawnArea": "front" },
+        { "spawnDelay": 4.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "top" },
+        { "spawnDelay": 5.5, "enemies": [{"type": "hellhound", "count": 8}], "spawnArea": "right" },
+        { "spawnDelay": 6.5, "enemies": [{"type": "elite_jumper", "count": 5}], "spawnArea": "center" },
+        { "spawnDelay": 7.5, "enemies": [{"type": "shield_zombie", "count": 5}], "spawnArea": "front" },
+        { "spawnDelay": 8.5, "enemies": [{"type": "slime", "count": 7}], "spawnArea": "random" },
+        { "spawnDelay": 9.5, "enemies": [{"type": "elite_drummer", "count": 3}], "spawnArea": "random" }
+      ]
+    }
+  ]
+}
