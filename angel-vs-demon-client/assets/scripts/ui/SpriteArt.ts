@@ -1,4 +1,4 @@
-import { Color, ImageAsset, Node, Rect, Sprite, SpriteFrame, Texture2D, UITransform, resources } from 'cc';
+import { Color, Node, Rect, Size, Sprite, SpriteFrame, Texture2D, UITransform, resources } from 'cc';
 
 type SpriteAttachOptions = {
   color?: Color;
@@ -49,15 +49,13 @@ export class SpriteArt {
     onLoad: (spriteFrame: SpriteFrame | null) => void,
   ): void {
     if (frameRect) {
-      resources.load(resourcePath, ImageAsset, (imageError, imageAsset) => {
-        if (imageError || !imageAsset) {
-          console.warn(`[SpriteArt] Failed to load image asset: ${resourcePath}`, imageError);
+      resources.load(`${resourcePath}/texture`, Texture2D, (textureError, texture) => {
+        if (textureError || !texture) {
+          console.warn(`[SpriteArt] Failed to load texture: ${resourcePath}`, textureError);
           onLoad(null);
           return;
         }
 
-        const texture = new Texture2D();
-        texture.image = imageAsset;
         const spriteFrame = new SpriteFrame();
         spriteFrame.reset({
           texture,
@@ -67,7 +65,7 @@ export class SpriteArt {
             frameRect.width,
             frameRect.height,
           ),
-          originalSize: { width: frameRect.width, height: frameRect.height },
+          originalSize: new Size(frameRect.width, frameRect.height),
         });
         onLoad(spriteFrame);
       });

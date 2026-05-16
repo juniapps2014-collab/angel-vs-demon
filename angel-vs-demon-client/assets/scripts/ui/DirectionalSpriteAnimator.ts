@@ -1,4 +1,4 @@
-import { _decorator, Component, ImageAsset, Rect, Sprite, SpriteFrame, Texture2D, resources } from 'cc';
+import { _decorator, Component, Rect, Size, Sprite, SpriteFrame, Texture2D, resources } from 'cc';
 
 const { ccclass } = _decorator;
 
@@ -30,14 +30,12 @@ export class DirectionalSpriteAnimator extends Component {
     this.loaded = false;
     this.clips.clear();
 
-    resources.load(resourcePath, ImageAsset, (error, imageAsset) => {
-      if (error || !imageAsset || !this.node.isValid) {
-        console.warn(`[DirectionalSpriteAnimator] Failed to load image: ${resourcePath}`, error);
+    resources.load(`${resourcePath}/texture`, Texture2D, (error, texture) => {
+      if (error || !texture || !this.node.isValid) {
+        console.warn(`[DirectionalSpriteAnimator] Failed to load texture: ${resourcePath}`, error);
         return;
       }
 
-      const texture = new Texture2D();
-      texture.image = imageAsset;
       this.texture = texture;
 
       Object.entries(clipMap).forEach(([clipName, rects]) => {
@@ -46,7 +44,7 @@ export class DirectionalSpriteAnimator extends Component {
           frame.reset({
             texture,
             rect: new Rect(rect.x, rect.y, rect.width, rect.height),
-            originalSize: { width: rect.width, height: rect.height },
+            originalSize: new Size(rect.width, rect.height),
           });
           return frame;
         });
