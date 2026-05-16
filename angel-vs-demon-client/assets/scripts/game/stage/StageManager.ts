@@ -1,7 +1,7 @@
 import { _decorator, Component, Label } from 'cc';
 import { ProfileService } from '../../auth/ProfileService';
 import { GAME_CONFIG } from '../../core/GameConfig';
-import { StageRepository } from '../../data/StageRepository';
+import { DEFAULT_STAGE_TIME_LIMIT_SECONDS, StageRepository } from '../../data/StageRepository';
 
 const { ccclass, property } = _decorator;
 
@@ -14,7 +14,7 @@ export class StageManager extends Component {
 
   onLoad(): void {
     const profile = ProfileService.getProfile();
-    this.currentStageId = profile?.highestStage ?? GAME_CONFIG.defaultStageId;
+    this.currentStageId = profile?.currentStage ?? profile?.highestStage ?? GAME_CONFIG.defaultStageId;
   }
 
   start(): void {
@@ -40,11 +40,22 @@ export class StageManager extends Component {
       enemyCount: 18,
       rewardGold: 40,
       bossId: null,
+      timeLimitSeconds: DEFAULT_STAGE_TIME_LIMIT_SECONDS,
     };
   }
 
   markStageCleared(): void {
-    ProfileService.updateHighestStage(this.currentStageId + 1);
+    const nextStageId = this.currentStageId + 1;
+    ProfileService.updateHighestStage(nextStageId);
+    ProfileService.setCurrentStage(nextStageId);
+    ProfileService.clearRunState();
+    this.currentStageId = nextStageId;
+    this.refreshLabel();
+  }
+
+  setCurrentStage(stageId: number): void {
+    this.currentStageId = Math.max(1, stageId);
+    ProfileService.setCurrentStage(this.currentStageId);
     this.refreshLabel();
   }
 

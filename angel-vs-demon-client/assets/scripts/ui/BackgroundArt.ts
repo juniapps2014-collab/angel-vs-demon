@@ -3,31 +3,39 @@ import { Color, Graphics, Node, Sprite, SpriteFrame, UITransform, resources } fr
 type BackgroundOptions = {
   overlayColor?: Color;
   overlayAlpha?: number;
+  width?: number;
+  height?: number;
 };
 
 export class BackgroundArt {
   static apply(parent: Node, resourcePath: string, options: BackgroundOptions = {}): void {
     const overlayColor = options.overlayColor ?? new Color(10, 14, 30, 255);
     const overlayAlpha = options.overlayAlpha ?? 110;
+    const width = options.width ?? 1280;
+    const height = options.height ?? 720;
+    const halfW = width / 2;
+    const halfH = height / 2;
 
     let bgNode = parent.getChildByName('SceneBackground');
     if (!bgNode) {
       bgNode = new Node('SceneBackground');
       bgNode.setPosition(0, 0);
-      bgNode.addComponent(UITransform).setContentSize(1280, 720);
+      bgNode.addComponent(UITransform).setContentSize(width, height);
       const sprite = bgNode.addComponent(Sprite);
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
       parent.addChild(bgNode);
       bgNode.setSiblingIndex(0);
     }
+    bgNode.getComponent(UITransform)?.setContentSize(width, height);
 
     let overlay = bgNode.getChildByName('SceneBackgroundOverlay');
     if (!overlay) {
       overlay = new Node('SceneBackgroundOverlay');
       overlay.setPosition(0, 0);
-      overlay.addComponent(UITransform).setContentSize(1280, 720);
+      overlay.addComponent(UITransform).setContentSize(width, height);
       bgNode.addChild(overlay);
     }
+    overlay.getComponent(UITransform)?.setContentSize(width, height);
 
     const overlayGraphics = overlay.getComponent(Graphics) ?? overlay.addComponent(Graphics);
     overlayGraphics.clear();
@@ -37,7 +45,7 @@ export class BackgroundArt {
       overlayColor.b,
       overlayAlpha,
     );
-    overlayGraphics.rect(-640, -360, 1280, 720);
+    overlayGraphics.rect(-halfW, -halfH, width, height);
     overlayGraphics.fill();
 
     this.loadSpriteFrame(resourcePath, (spriteFrame) => {

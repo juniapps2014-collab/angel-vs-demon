@@ -6,8 +6,8 @@ const { ccclass } = _decorator;
 @ccclass('AutoAimSystem')
 export class AutoAimSystem extends Component {
   getNearestEnemy(): Node | null {
-    // 계층: Player → BattleScene(Canvas) → EnemyRoot
-    const enemyRoot = this.node.parent?.getChildByName('EnemyRoot') ?? null;
+    // 계층: Player → Scene → WorldRoot → EnemyRoot
+    const enemyRoot = this.node.parent?.getChildByName('WorldRoot')?.getChildByName('EnemyRoot') ?? null;
     if (!enemyRoot) {
       return null;
     }

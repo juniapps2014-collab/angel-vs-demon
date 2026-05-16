@@ -11,12 +11,15 @@ export interface Wave {
   spawnArea: string;
 }
 
+export const DEFAULT_STAGE_TIME_LIMIT_SECONDS = 180;
+
 export interface StageDefinition {
   id: number;
   recommendedPower: number;
   enemyCount: number;
   rewardGold: number;
   bossId: string | null;
+  timeLimitSeconds: number;
   waves?: Wave[];
 }
 
@@ -31,6 +34,8 @@ interface StageConfigRow {
   enemy_count: number;
   reward_gold: number;
   boss_id: string | null;
+  duration_seconds?: number | null;
+  time_limit_seconds?: number | null;
   waves: Wave[];
 }
 
@@ -95,10 +100,19 @@ const BOSS_IDS: Record<number, string> = {
 
 let stageData: StageData | null = null;
 
+function normalizeTimeLimitSeconds(value: unknown): number {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return DEFAULT_STAGE_TIME_LIMIT_SECONDS;
+  }
+  return Math.max(1, Math.floor(numericValue));
+}
+
 function sanitizeStageData(data: StageData): StageData {
   return {
     stages: data.stages.map((stage) => ({
       ...stage,
+      timeLimitSeconds: normalizeTimeLimitSeconds(stage.timeLimitSeconds),
       waves: stage.waves?.map((wave) => ({
         ...wave,
         enemies: wave.enemies.map((enemy) => ({
@@ -117,6 +131,7 @@ function rowToStageDefinition(row: StageConfigRow): StageDefinition {
     enemyCount:       row.enemy_count,
     rewardGold:       row.reward_gold,
     bossId:           row.boss_id,
+    timeLimitSeconds: normalizeTimeLimitSeconds(row.time_limit_seconds ?? row.duration_seconds),
     waves:            Array.isArray(row.waves) ? row.waves : [],
   };
 }
@@ -197,6 +212,7 @@ function generateStageFromId(stageId: number): StageDefinition {
     enemyCount: baseEnemies,
     rewardGold: 40 + stageId * 15,
     bossId: getBossId(stageId),
+    timeLimitSeconds: DEFAULT_STAGE_TIME_LIMIT_SECONDS,
     waves: waveConfigs,
   };
 }

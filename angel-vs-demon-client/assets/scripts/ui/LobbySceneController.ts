@@ -15,7 +15,7 @@ import { StageRepository } from '../data/StageRepository';
 import { SCENE_NAMES } from '../core/GameConfig';
 import { AuthService } from '../auth/AuthService';
 import { SoundManager } from '../audio/SoundManager';
-import { BackgroundArt } from './BackgroundArt';
+import { ProceduralBackground } from './ProceduralBackground';
 
 const { ccclass } = _decorator;
 
@@ -30,8 +30,9 @@ export class LobbySceneController extends Component {
   start(): void {
     const profile = ProfileService.getProfile();
     const canvas = this.ensureCanvas();
+    SoundManager.playMenuBgm();
 
-    this.createBackground(canvas);
+    this.createBackground(canvas, profile);
     this.createHeader(canvas, profile);
     this.createWeaponPanel(canvas, profile);
     this.createSkillsPanel(canvas, profile);
@@ -42,11 +43,9 @@ export class LobbySceneController extends Component {
 
   // ─── 헤더 ─────────────────────────────────────────────────────────
 
-  private createBackground(canvas: Node): void {
-    BackgroundArt.apply(canvas, 'images/backgrounds/lobby_garden', {
-      overlayColor: new Color(10, 18, 34, 255),
-      overlayAlpha: 88,
-    });
+  private createBackground(canvas: Node, profile: PlayerProfile | null): void {
+    const stageId = profile?.currentStage ?? profile?.highestStage ?? 1;
+    ProceduralBackground.apply(canvas, stageId);
 
     const accent = new Node('LobbyAccent');
     accent.setPosition(0, 0);
@@ -96,13 +95,14 @@ export class LobbySceneController extends Component {
     );
 
     const session = AuthService.getCurrentUser();
-    const isCloud = session?.provider === 'supabase-anon';
+    const isCloud = !!session && session.provider !== 'local-fallback';
     this.createLabel(
       canvas,
       isCloud ? '● Cloud' : '● Local',
       560, 253, 15,
       isCloud ? new Color(80, 230, 110, 220) : new Color(220, 160, 60, 220),
     );
+
   }
 
   // ─── 무기 패널 ────────────────────────────────────────────────────
@@ -120,20 +120,21 @@ export class LobbySceneController extends Component {
     const canAfford = (profile?.gold ?? 0) >= cost;
 
     this.createLabel(canvas, `소드  Lv.${weaponLevel}`, cx, 150, 20);
+    this.createWeaponPreview(canvas, cx, 108, profile?.weaponId ?? 'weapon_sword_001', weaponLevel, profile?.relicIds ?? []);
     this.createLabel(
       canvas,
       `데미지  ${currentDmg} → ${nextDmg}`,
-      cx, 110, 18, new Color(180, 220, 255, 255),
+      cx, 74, 18, new Color(180, 220, 255, 255),
     );
     this.createLabel(
       canvas,
       `업그레이드 비용: ${cost} G`,
-      cx, 72, 17, new Color(255, 215, 70, 255),
+      cx, 46, 17, new Color(255, 215, 70, 255),
     );
 
     const upgradeBtn = this.createButton(
       canvas, canAfford ? 'UPGRADE' : `Gold ${cost} 필요`,
-      cx, 30, 220, 42,
+      cx, 6, 220, 42,
       canAfford ? new Color(40, 110, 55, 230) : new Color(70, 55, 55, 200),
     );
     if (canAfford) {
@@ -165,6 +166,9 @@ export class LobbySceneController extends Component {
       const canAfford = gold >= upgradeCost && skillId !== '';
 
       this.createSlotRow(canvas, cx, yPos, `${i + 1}`, `${name} Lv.${level}`, i, 'skill');
+      if (skillId) {
+        this.createLoadoutBadge(canvas, cx - 82, yPos, skillId, 'skill');
+      }
 
       if (skillId) {
         const lvUpBtn = this.createButton(
@@ -196,8 +200,12 @@ export class LobbySceneController extends Component {
     const rows = [150, 105, 60] as const;
 
     rows.forEach((yPos, i) => {
-      const name = ProfileService.getRelicName(relicIds[i] ?? '-');
+      const relicId = relicIds[i] ?? '';
+      const name = ProfileService.getRelicName(relicId || '-');
       this.createSlotRow(canvas, cx, yPos, `${i + 1}`, name, i, 'relic');
+      if (relicId) {
+        this.createLoadoutBadge(canvas, cx - 82, yPos, relicId, 'relic');
+      }
     });
   }
 
@@ -247,10 +255,172 @@ export class LobbySceneController extends Component {
     }, this);
   }
 
+  private createWeaponPreview(
+    canvas: Node,
+    cx: number,
+    y: number,
+    weaponId: string,
+    weaponLevel: number,
+    relicIds: string[],
+  ): void {
+    const preview = new Node('WeaponPreview');
+    preview.setPosition(cx, y);
+    preview.addComponent(UITransform).setContentSize(188, 50);
+    const g = preview.addComponent(Graphics);
+    const hasHorn = relicIds.includes('relic_broken_horn');
+    const hasGrail = relicIds.includes('relic_holy_grail');
+    const bladeColor = hasHorn
+      ? new Color(255, 145, 120, 245)
+      : hasGrail
+        ? new Color(255, 232, 140, 245)
+        : new Color(220, 235, 255, 245);
+    const guardColor = weaponId === 'weapon_sword_001'
+      ? new Color(96, 170, 255, 228)
+      : new Color(150, 150, 220, 228);
+    const bladeLength = 64 + Math.min(28, weaponLevel * 2);
+    const bladeHeight = weaponLevel >= 7 ? 12 : 10;
+
+    g.fillColor = new Color(12, 22, 46, 168);
+    g.roundRect(-88, -22, 176, 44, 14);
+    g.fill();
+    g.strokeColor = new Color(116, 150, 215, 92);
+    g.lineWidth = 1;
+    g.roundRect(-88, -22, 176, 44, 14);
+    g.stroke();
+    g.fillColor = new Color(255, 255, 255, 12);
+    g.roundRect(-84, 2, 168, 14, 10);
+    g.fill();
+    g.fillColor = bladeColor;
+    g.moveTo(-18, -bladeHeight / 2);
+    g.lineTo(-18 + bladeLength, -bladeHeight / 2);
+    g.lineTo(-8 + bladeLength, 0);
+    g.lineTo(-18 + bladeLength, bladeHeight / 2);
+    g.lineTo(-18, bladeHeight / 2);
+    g.close();
+    g.fill();
+    g.fillColor = guardColor;
+    g.roundRect(-28, -10, 12, 20, 4);
+    g.fill();
+    g.roundRect(-40, -4, 18, 8, 3);
+    g.fill();
+    g.fillColor = new Color(255, 221, 140, 110);
+    g.circle(-22, 0, 2.4);
+    g.fill();
+    g.strokeColor = new Color(255, 190, 70, 220);
+    g.lineWidth = 1.4;
+    g.moveTo(-18, -bladeHeight / 2);
+    g.lineTo(-18 + bladeLength, -bladeHeight / 2);
+    g.lineTo(-8 + bladeLength, 0);
+    g.lineTo(-18 + bladeLength, bladeHeight / 2);
+    g.lineTo(-18, bladeHeight / 2);
+    g.close();
+    g.stroke();
+    canvas.addChild(preview);
+  }
+
+  private createLoadoutBadge(
+    canvas: Node,
+    x: number,
+    y: number,
+    id: string,
+    type: 'skill' | 'relic',
+  ): void {
+    const badge = new Node(`Badge_${id}`);
+    badge.setPosition(x, y);
+    badge.addComponent(UITransform).setContentSize(34, 34);
+    const g = badge.addComponent(Graphics);
+    const frameColor = type === 'skill'
+      ? new Color(92, 148, 240, 86)
+      : new Color(186, 132, 240, 86);
+
+    g.fillColor = new Color(10, 18, 38, 178);
+    g.roundRect(-15, -15, 30, 30, 10);
+    g.fill();
+    g.strokeColor = frameColor;
+    g.lineWidth = 1;
+    g.roundRect(-15, -15, 30, 30, 10);
+    g.stroke();
+    g.fillColor = new Color(255, 255, 255, 10);
+    g.roundRect(-12, 1, 24, 10, 8);
+    g.fill();
+
+    if (type === 'skill') {
+      g.fillColor = new Color(122, 176, 255, 215);
+      switch (id) {
+        case 'skill_star_burst':
+          g.moveTo(0, 12); g.lineTo(4, 4); g.lineTo(12, 0); g.lineTo(4, -4);
+          g.lineTo(0, -12); g.lineTo(-4, -4); g.lineTo(-12, 0); g.lineTo(-4, 4); g.close(); g.fill();
+          break;
+        case 'skill_guardian_aura':
+          g.strokeColor = new Color(135, 235, 255, 255);
+          g.lineWidth = 2;
+          g.circle(0, 0, 10);
+          g.stroke();
+          g.strokeColor = new Color(230, 248, 255, 160);
+          g.lineWidth = 1;
+          g.circle(0, 0, 6.5);
+          g.stroke();
+          break;
+        case 'skill_heaven_strike':
+          g.fillColor = new Color(255, 231, 170, 215);
+          g.rect(-2, -10, 4, 20);
+          g.fill();
+          g.rect(-10, -2, 20, 4);
+          g.fill();
+          break;
+        case 'skill_holy_dash':
+          g.fillColor = new Color(180, 224, 255, 210);
+          g.moveTo(-10, 0); g.lineTo(2, 8); g.lineTo(10, 0); g.lineTo(2, -8); g.close(); g.fill();
+          break;
+        default:
+          g.circle(0, 0, 8); g.fill();
+          break;
+      }
+    } else {
+      switch (id) {
+        case 'relic_holy_grail':
+          g.fillColor = new Color(255, 218, 110, 220);
+          g.moveTo(-6, 7); g.lineTo(6, 7); g.lineTo(9, -3); g.lineTo(-9, -3); g.close(); g.fill();
+          g.rect(-2, -7, 4, 6);
+          g.fill();
+          break;
+        case 'relic_broken_horn':
+          g.fillColor = new Color(255, 126, 104, 220);
+          g.moveTo(-2, 0); g.lineTo(-10, 10); g.lineTo(-6, -8); g.close(); g.fill();
+          g.moveTo(2, 0); g.lineTo(10, 10); g.lineTo(4, -8); g.close(); g.fill();
+          break;
+        case 'relic_celestial_compass':
+          g.strokeColor = new Color(120, 180, 255, 255);
+          g.lineWidth = 2;
+          g.circle(0, 0, 10); g.stroke();
+          g.moveTo(0, 12); g.lineTo(0, 4); g.moveTo(12, 0); g.lineTo(4, 0); g.stroke();
+          break;
+        case 'relic_laughter_mask':
+          g.fillColor = new Color(214, 170, 255, 220);
+          g.roundRect(-9, -7, 18, 14, 5); g.fill();
+          break;
+        case 'relic_guardian_feather':
+          g.fillColor = new Color(232, 242, 255, 220);
+          g.moveTo(-8, -8); g.lineTo(6, 0); g.lineTo(-4, 10); g.close(); g.fill();
+          break;
+        case 'relic_golden_bell':
+          g.fillColor = new Color(255, 205, 88, 220);
+          g.moveTo(-7, 4); g.lineTo(7, 4); g.lineTo(10, -6); g.lineTo(-10, -6); g.close(); g.fill();
+          break;
+        default:
+          g.fillColor = new Color(210, 155, 255, 220);
+          g.circle(0, 0, 8); g.fill();
+          break;
+      }
+    }
+
+    canvas.addChild(badge);
+  }
+
   // ─── 스테이지 정보 바 ─────────────────────────────────────────────
 
   private createStageInfoBar(canvas: Node, profile: PlayerProfile | null): void {
-    const stageId = profile?.highestStage ?? 1;
+    const stageId = profile?.currentStage ?? profile?.highestStage ?? 1;
     const stage = StageRepository.getStage(stageId);
     const playerDmg = ProfileService.getWeaponDamage();
     const recPower = stage.recommendedPower;
@@ -306,8 +476,44 @@ export class LobbySceneController extends Component {
   // ─── 하단 버튼 ────────────────────────────────────────────────────
 
   private createBottomBar(canvas: Node): void {
+    const hasRunState = ProfileService.hasRunState();
+    const BTN_Y = -290;
+    const BTN_W = 200;
+    const BTN_H = 48;
+    const GAP = 24;
+
+    // 하단 공통 바 배경
+    const bar = new Node('BottomBar');
+    bar.setPosition(0, BTN_Y);
+    bar.addComponent(UITransform).setContentSize(1180, 68);
+    const bg = bar.addComponent(Graphics);
+    bg.fillColor = new Color(8, 16, 36, 200);
+    bg.roundRect(-590, -34, 1180, 68, 10);
+    bg.fill();
+    bg.strokeColor = new Color(80, 120, 200, 85);
+    bg.lineWidth = 1;
+    bg.roundRect(-590, -34, 1180, 68, 10);
+    bg.stroke();
+    canvas.addChild(bar);
+
+    // 3개 버튼 X 좌표: 좌, 중, 우 — 동일 간격
+    const totalW = BTN_W * 3 + GAP * 2;
+    const leftX  = -totalW / 2 + BTN_W / 2;       // -224
+    const centerX = 0;
+    const rightX  = totalW / 2 - BTN_W / 2;       // 224
+
+    // LOGOUT
+    const logoutBtn = this.createButton(
+      canvas, 'LOGOUT', leftX, BTN_Y, BTN_W, BTN_H,
+      new Color(92, 42, 42, 225),
+    );
+    logoutBtn.on('click', () => {
+      void this.handleLogout();
+    }, this);
+
+    // BATTLE / CONTINUE
     const battleBtn = this.createButton(
-      canvas, '⚔  BATTLE', 0, -105, 300, 58,
+      canvas, hasRunState ? '▶  CONTINUE' : '⚔  BATTLE', centerX, BTN_Y, BTN_W, BTN_H,
       new Color(190, 50, 50, 235),
     );
     battleBtn.on('click', () => {
@@ -315,11 +521,24 @@ export class LobbySceneController extends Component {
       director.loadScene(SCENE_NAMES.Battle);
     }, this);
 
-    const refreshBtn = this.createButton(canvas, 'REFRESH', 510, -105, 120, 42);
+    // REFRESH / RESTART
+    const refreshBtn = this.createButton(
+      canvas, hasRunState ? 'RESTART' : 'REFRESH', rightX, BTN_Y, BTN_W, BTN_H,
+      new Color(35, 55, 95, 225),
+    );
     refreshBtn.on('click', () => {
       SoundManager.playUiClick();
-      director.loadScene(SCENE_NAMES.Lobby);
+      if (hasRunState) {
+        ProfileService.clearRunState();
+      }
+      director.loadScene(hasRunState ? SCENE_NAMES.Battle : SCENE_NAMES.Lobby);
     }, this);
+  }
+
+  private async handleLogout(): Promise<void> {
+    await AuthService.signOut();
+    ProfileService.resetSession();
+    director.loadScene(SCENE_NAMES.Login);
   }
 
   // ─── 헬퍼 ────────────────────────────────────────────────────────

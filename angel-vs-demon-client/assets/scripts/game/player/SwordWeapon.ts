@@ -247,7 +247,7 @@ export class SwordWeapon extends Component {
   }
 
   private applyProjectileHits(projectilePosition: Vec3): void {
-    const enemyRoot = this.node.parent?.parent?.getChildByName('EnemyRoot') ?? null;
+    const enemyRoot = this.node.parent?.parent?.getChildByName('WorldRoot')?.getChildByName('EnemyRoot') ?? null;
     if (!enemyRoot) return;
 
     for (const child of enemyRoot.children) {

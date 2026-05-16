@@ -7,6 +7,7 @@ export interface PlayerProfile {
   userId: string;
   nickname: string;
   highestStage: number;
+  currentStage: number;
   playerLevel: number;
   gold: number;
   totalKills: number;
@@ -15,6 +16,18 @@ export interface PlayerProfile {
   skillIds: string[];
   skillLevels: Record<string, number>;
   relicIds: string[];
+  runState: RunState | null;
+}
+
+export interface RunState {
+  stageId: number;
+  waveIndex: number;
+  waveTimer: number;
+  battleTimeElapsed: number;
+  killCount: number;
+  playerHp: number;
+  bossSpawned: boolean;
+  spawnQueue: Array<{ type: string; spawnArea: string; spawnIn: number }>;
 }
 
 export class ProfileService {
@@ -35,7 +48,10 @@ export class ProfileService {
   ];
 
   static async bootstrap(): Promise<void> {
-    await this.ensureProfile();
+    await AuthService.bootstrap();
+    if (AuthService.getCurrentUser()) {
+      await this.ensureProfile();
+    }
   }
 
   static async ensureProfile(): Promise<PlayerProfile> {
@@ -43,10 +59,10 @@ export class ProfileService {
       return this.profile;
     }
 
-    const user = await AuthService.signInAnonymously();
+    const user = AuthService.getCurrentUser() ?? await AuthService.signInAnonymously();
     const localProfile = this.loadLocalProfile(user.id);
 
-    if (SupabaseClient.isConfigured() && user.provider === 'supabase-anon') {
+    if (SupabaseClient.isConfigured() && (user.provider === 'supabase-anon' || user.provider === 'supabase-email')) {
       try {
         this.profile = await this.loadOrCreateRemoteProfile(user.id, localProfile);
         this.persist();
@@ -64,6 +80,10 @@ export class ProfileService {
 
   static getProfile(): PlayerProfile | null {
     return this.profile;
+  }
+
+  static resetSession(): void {
+    this.profile = null;
   }
 
   static getWeaponDamage(): number {
@@ -162,6 +182,60 @@ export class ProfileService {
     }
 
     this.profile.highestStage = Math.max(this.profile.highestStage, stageId);
+    this.profile.currentStage = Math.max(this.profile.currentStage, this.profile.highestStage);
+    this.persist();
+    void this.syncProfile();
+  }
+
+  static setCurrentStage(stageId: number): void {
+    if (!this.profile) {
+      return;
+    }
+
+    this.profile.currentStage = Math.max(1, stageId);
+    this.persist();
+    void this.syncProfile();
+  }
+
+  static getCurrentStage(): number {
+    return this.profile?.currentStage ?? this.profile?.highestStage ?? 1;
+  }
+
+  static saveRunState(runState: RunState): void {
+    if (!this.profile) {
+      return;
+    }
+
+    this.profile.runState = {
+      ...runState,
+      spawnQueue: runState.spawnQueue.map((entry) => ({ ...entry })),
+    };
+    this.profile.currentStage = runState.stageId;
+    this.persist();
+    void this.syncProfile();
+  }
+
+  static getRunState(): RunState | null {
+    if (!this.profile?.runState) {
+      return null;
+    }
+
+    return {
+      ...this.profile.runState,
+      spawnQueue: this.profile.runState.spawnQueue.map((entry) => ({ ...entry })),
+    };
+  }
+
+  static hasRunState(): boolean {
+    return !!this.profile?.runState;
+  }
+
+  static clearRunState(): void {
+    if (!this.profile) {
+      return;
+    }
+
+    this.profile.runState = null;
     this.persist();
     void this.syncProfile();
   }
@@ -271,6 +345,7 @@ export class ProfileService {
       userId,
       nickname: `${GAME_CONFIG.defaultNicknamePrefix}-${userId.slice(0, 4)}`,
       highestStage: 1,
+      currentStage: 1,
       playerLevel: 1,
       gold: 0,
       totalKills: 0,
@@ -287,6 +362,7 @@ export class ProfileService {
         'relic_celestial_compass',
         'relic_guardian_feather',
       ],
+      runState: null,
     };
   }
 
@@ -305,6 +381,8 @@ export class ProfileService {
           : defaults.relicIds,
       skillLevels: profile.skillLevels ?? defaults.skillLevels,
       totalKills: profile.totalKills ?? defaults.totalKills,
+      currentStage: profile.currentStage ?? profile.highestStage ?? defaults.currentStage,
+      runState: profile.runState ?? defaults.runState,
     };
   }
 
@@ -320,6 +398,11 @@ export class ProfileService {
     }>('profiles', `user_id=eq.${userId}&select=user_id,nickname`);
 
     if (!existingProfile) {
+      const pendingNickname = globalThis.localStorage?.getItem('avd.pendingNickname')?.trim();
+      if (pendingNickname) {
+        globalThis.localStorage?.removeItem('avd.pendingNickname');
+        defaultProfile.nickname = pendingNickname;
+      }
       await SupabaseClient.upsert('profiles', {
         user_id: userId,
         nickname: defaultProfile.nickname,
@@ -338,19 +421,23 @@ export class ProfileService {
     const progress = await SupabaseClient.queryMaybeSingle<{
       player_level: number;
       highest_stage: number;
+      current_stage: number;
       gold: number;
       total_kills: number;
-    }>('player_progress', `user_id=eq.${userId}&select=player_level,highest_stage,gold,total_kills`);
+      run_state: RunState | null;
+    }>('player_progress', `user_id=eq.${userId}&select=player_level,highest_stage,current_stage,gold,total_kills,run_state`);
 
     if (!progress) {
       await SupabaseClient.upsert('player_progress', {
         user_id: userId,
         player_level: defaultProfile.playerLevel,
         highest_stage: defaultProfile.highestStage,
+        current_stage: defaultProfile.currentStage,
         gold: 0,
         gem: 0,
         total_kills: 0,
         boss_kills: 0,
+        run_state: null,
       });
     }
 
@@ -391,6 +478,7 @@ export class ProfileService {
       userId,
       nickname: existingProfile?.nickname ?? defaultProfile.nickname,
       highestStage: progress?.highest_stage ?? defaultProfile.highestStage,
+      currentStage: progress?.current_stage ?? progress?.highest_stage ?? defaultProfile.currentStage,
       playerLevel: progress?.player_level ?? defaultProfile.playerLevel,
       gold: progress?.gold ?? defaultProfile.gold,
       totalKills: progress?.total_kills ?? defaultProfile.totalKills,
@@ -399,6 +487,7 @@ export class ProfileService {
       skillIds: validSkills,
       skillLevels: validSkillLevels,
       relicIds: validRelics,
+      runState: progress?.run_state ?? defaultProfile.runState,
     });
   }
 
@@ -408,7 +497,7 @@ export class ProfileService {
     }
 
     const user = AuthService.getCurrentUser();
-    if (!user || user.provider !== 'supabase-anon') {
+    if (!user || (user.provider !== 'supabase-anon' && user.provider !== 'supabase-email')) {
       return;
     }
 
@@ -429,8 +518,10 @@ export class ProfileService {
         user_id: this.profile.userId,
         player_level: this.profile.playerLevel,
         highest_stage: this.profile.highestStage,
+        current_stage: this.profile.currentStage,
         gold: this.profile.gold,
         total_kills: this.profile.totalKills ?? 0,
+        run_state: this.profile.runState,
       });
 
       await SupabaseClient.upsert('player_loadouts', {

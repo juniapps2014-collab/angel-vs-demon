@@ -61,7 +61,7 @@ export class BossController extends EnemyController {
       this.spawnMinionsCallback?.();
       this.showPhaseTransitionEffect();
       EventBus.emit('boss:phase', {
-        position: this.node.position.clone(),
+        position: this.node.worldPosition.clone(),
       });
     }
 
@@ -81,24 +81,24 @@ export class BossController extends EnemyController {
     // 차지 공격 타이머
     this.chargeTimer += deltaTime;
     if (!this.isCharging && this.chargeTimer >= this.chargeInterval) {
-      // 계층: Boss → EnemyRoot → BattleScene(Canvas) → Player
-      const playerNode = this.node.parent?.parent?.getChildByName('Player') ?? null;
+      // 계층: Boss → EnemyRoot → WorldRoot → Scene → Player
+      const playerNode = this.node.parent?.parent?.parent?.getChildByName('Player') ?? null;
       if (playerNode) {
         this.chargeTimer = 0;
         this.isCharging = true;
         this.chargeDuration = 0.4;
         const dir = new Vec3();
-        Vec3.subtract(dir, playerNode.position, this.node.position);
+        Vec3.subtract(dir, playerNode.worldPosition, this.node.worldPosition);
         dir.normalize();
         this.chargeDirection.set(dir.x * this.chargeSpeed, dir.y * this.chargeSpeed, 0);
         EventBus.emit('boss:charge', {
-          position: this.node.position.clone(),
+          position: this.node.worldPosition.clone(),
           direction: dir.clone(),
         });
       }
     }
 
-    // 차지 중 이동
+    // 차지 중 이동 (chargeDirection은 월드 방향이나 WorldRoot에 회전이 없어 로컬과 동일)
     if (this.isCharging) {
       this.chargeDuration -= deltaTime;
       this.overrideMovement = true;
@@ -139,14 +139,14 @@ export class BossController extends EnemyController {
   }
 
   private castNova(): void {
-    const playerNode = this.node.parent?.parent?.getChildByName('Player') ?? null;
+    const playerNode = this.node.parent?.parent?.parent?.getChildByName('Player') ?? null;
     const radius = 150;
-    if (playerNode && Vec3.distance(playerNode.position, this.node.position) <= radius) {
-      playerNode.getComponent(PlayerController)?.receiveDamage(this.contactDamage + 12, this.node.position);
+    if (playerNode && Vec3.distance(playerNode.worldPosition, this.node.worldPosition) <= radius) {
+      playerNode.getComponent(PlayerController)?.receiveDamage(this.contactDamage + 12, this.node.worldPosition);
     }
     EventBus.emit('boss:special', {
       kind: 'nova',
-      position: this.node.position.clone(),
+      position: this.node.worldPosition.clone(),
       radius,
     });
   }
@@ -155,7 +155,7 @@ export class BossController extends EnemyController {
     this.spawnMinionsCallback?.();
     EventBus.emit('boss:special', {
       kind: 'summon',
-      position: this.node.position.clone(),
+      position: this.node.worldPosition.clone(),
       count: this.minionCount,
     });
   }
@@ -166,7 +166,7 @@ export class BossController extends EnemyController {
     this.chargeInterval = Math.max(1.1, this.chargeInterval - 0.25);
     EventBus.emit('boss:special', {
       kind: 'frenzy',
-      position: this.node.position.clone(),
+      position: this.node.worldPosition.clone(),
     });
   }
 }

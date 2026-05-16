@@ -27,6 +27,7 @@ export class PlayerController extends Component {
   weaponNode: Node | null = null;
 
   private moveAxis = new Vec3();
+  private worldRoot: Node | null = null;
   private hasMovedOnce = false;
   private attackElapsed = 0;
   private attackQueued = false;
@@ -130,6 +131,11 @@ export class PlayerController extends Component {
     return this.maxHp;
   }
 
+  setCurrentHp(value: number): void {
+    this.currentHp = Math.max(0, Math.min(this.maxHp, value));
+    this.updateHpBar();
+  }
+
   getMoveDirection(): Vec3 {
     if (this.moveAxis.lengthSqr() > 0) {
       return this.moveAxis.clone().normalize();
@@ -138,9 +144,9 @@ export class PlayerController extends Component {
   }
 
   applyDash(direction: Vec3, distance: number): void {
+    if (!this.worldRoot) return;
     const normalized = direction.clone().normalize();
-    const dashPos = this.node.position.clone().add(normalized.multiplyScalar(distance));
-    this.node.setPosition(this.clampToArena(dashPos));
+    this.applyWorldMovement(normalized.multiplyScalar(distance));
   }
 
   heal(amount: number): void {
@@ -154,6 +160,10 @@ export class PlayerController extends Component {
 
   isDead(): boolean {
     return this.currentHp <= 0;
+  }
+
+  setWorldRoot(node: Node): void {
+    this.worldRoot = node;
   }
 
   hasStartedMoving(): boolean {
@@ -206,44 +216,112 @@ export class PlayerController extends Component {
     }, 0, 30, 0);
   }
 
-  private readonly ARENA_HALF_W = 570;
-  private readonly ARENA_HALF_H = 305;
+  private readonly WORLD_HALF_W = 1400;
+  private readonly WORLD_HALF_H = 800;
+  private readonly VIEW_HALF_W = 640;
+  private readonly VIEW_HALF_H = 360;
+  private readonly SCREEN_EDGE_PADDING_X = 88;
+  private readonly SCREEN_EDGE_PADDING_Y = 78;
+
+  private clampWorldRoot(position: Vec3): Vec3 {
+    const maxScrollX = this.WORLD_HALF_W - this.VIEW_HALF_W;
+    const maxScrollY = this.WORLD_HALF_H - this.VIEW_HALF_H;
+    position.x = Math.max(-maxScrollX, Math.min(maxScrollX, position.x));
+    position.y = Math.max(-maxScrollY, Math.min(maxScrollY, position.y));
+    return position;
+  }
+
+  private clampPlayerScreenPosition(position: Vec3): Vec3 {
+    const maxX = this.VIEW_HALF_W - this.SCREEN_EDGE_PADDING_X;
+    const maxY = this.VIEW_HALF_H - this.SCREEN_EDGE_PADDING_Y;
+    position.x = Math.max(-maxX, Math.min(maxX, position.x));
+    position.y = Math.max(-maxY, Math.min(maxY, position.y));
+    return position;
+  }
 
   private movePlayer(deltaTime: number): void {
-    if (this.moveAxis.lengthSqr() === 0) return;
+    if (this.moveAxis.lengthSqr() === 0 || !this.worldRoot) return;
 
     const normalized = this.moveAxis.clone().normalize();
     this.updateFacingFromVector(normalized);
     const frameMove = normalized.multiplyScalar(this.moveSpeed * deltaTime);
-    const next = this.node.position.clone().add(frameMove);
-
-    this.node.setPosition(this.clampToArena(next));
+    this.applyWorldMovement(frameMove);
   }
 
   private applyDamageKnockback(sourcePosition?: Vec3): void {
     const escapeDirection = this.computeEscapeDirection(sourcePosition);
-    if (escapeDirection.lengthSqr() < 0.001) {
+    if (escapeDirection.lengthSqr() < 0.001 || !this.worldRoot) return;
+
+    this.applyWorldMovement(escapeDirection.multiplyScalar(this.damageKnockbackDistance));
+    this.updateFacingFromVector(escapeDirection);
+  }
+
+  private applyWorldMovement(worldDelta: Vec3): void {
+    if (!this.worldRoot) return;
+
+    const playerPos = this.node.position.clone();
+    const recenteredDelta = this.consumePlayerOffsetTowardCenter(playerPos, worldDelta);
+    const remainingDelta = worldDelta.clone().subtract(recenteredDelta);
+
+    const currentWorldRootPos = this.worldRoot.position.clone();
+    const desiredWorldRootPos = currentWorldRootPos.clone().subtract(remainingDelta);
+    const clampedWorldRootPos = this.clampWorldRoot(desiredWorldRootPos);
+    const consumedByWorld = currentWorldRootPos.clone().subtract(clampedWorldRootPos);
+    const leftover = remainingDelta.clone().subtract(consumedByWorld);
+
+    this.worldRoot.setPosition(clampedWorldRootPos);
+
+    if (leftover.lengthSqr() > 0.0001) {
+      const nextPlayerPos = playerPos.add(leftover);
+      this.node.setPosition(this.clampPlayerScreenPosition(nextPlayerPos));
+    } else if (recenteredDelta.lengthSqr() > 0.0001) {
+      this.node.setPosition(this.clampPlayerScreenPosition(playerPos));
+    }
+  }
+
+  private consumePlayerOffsetTowardCenter(playerPos: Vec3, worldDelta: Vec3): Vec3 {
+    const consumed = new Vec3();
+    this.consumeAxisOffsetTowardCenter(playerPos, worldDelta, consumed, 'x');
+    this.consumeAxisOffsetTowardCenter(playerPos, worldDelta, consumed, 'y');
+    return consumed;
+  }
+
+  private consumeAxisOffsetTowardCenter(
+    playerPos: Vec3,
+    worldDelta: Vec3,
+    consumed: Vec3,
+    axis: 'x' | 'y',
+  ): void {
+    const offset = playerPos[axis];
+    const delta = worldDelta[axis];
+    if (Math.abs(offset) < 0.001 || Math.abs(delta) < 0.001) {
+      return;
+    }
+    if (Math.sign(offset) === Math.sign(delta)) {
       return;
     }
 
-    const next = this.node.position.clone().add(escapeDirection.multiplyScalar(this.damageKnockbackDistance));
-    this.node.setPosition(this.clampToArena(next));
-    this.updateFacingFromVector(escapeDirection);
+    const amount = Math.min(Math.abs(offset), Math.abs(delta));
+    const movement = Math.sign(delta) * amount;
+    playerPos[axis] += movement;
+    consumed[axis] = movement;
   }
 
   private computeEscapeDirection(sourcePosition?: Vec3): Vec3 {
     const escape = new Vec3();
 
     if (sourcePosition) {
-      Vec3.subtract(escape, this.node.position, sourcePosition);
+      Vec3.subtract(escape, this.node.worldPosition, sourcePosition);
     }
 
-    const enemyRoot = this.node.parent?.getChildByName('EnemyRoot');
+    // Player → Scene → WorldRoot → EnemyRoot
+    const worldRoot = this.node.parent?.getChildByName('WorldRoot');
+    const enemyRoot = worldRoot?.getChildByName('EnemyRoot');
     const enemies = enemyRoot?.children ?? [];
     for (const enemy of enemies) {
       if (!enemy.isValid) continue;
       const diff = new Vec3();
-      Vec3.subtract(diff, this.node.position, enemy.position);
+      Vec3.subtract(diff, this.node.worldPosition, enemy.worldPosition);
       const dist = diff.length();
       if (dist < 0.01 || dist > 120) continue;
       const weight = (120 - dist) / 120;
@@ -260,11 +338,6 @@ export class PlayerController extends Component {
     return escape.normalize();
   }
 
-  private clampToArena(position: Vec3): Vec3 {
-    position.x = Math.max(-this.ARENA_HALF_W, Math.min(this.ARENA_HALF_W, position.x));
-    position.y = Math.max(-this.ARENA_HALF_H, Math.min(this.ARENA_HALF_H, position.y));
-    return position;
-  }
 
   private updateManualAttack(deltaTime: number): void {
     this.attackElapsed += deltaTime;

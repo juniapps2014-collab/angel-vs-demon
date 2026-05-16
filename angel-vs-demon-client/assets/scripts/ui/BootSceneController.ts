@@ -1,4 +1,5 @@
 import { _decorator, Component, director } from 'cc';
+import { AuthService } from '../auth/AuthService';
 import { ProfileService } from '../auth/ProfileService';
 import { SCENE_NAMES } from '../core/GameConfig';
 import { SupabaseClient } from '../network/SupabaseClient';
@@ -15,10 +16,11 @@ export class BootSceneController extends Component {
     SupabaseClient.initialize(SUPABASE_PROJECT_CONFIG);
     SoundManager.initialize();
     await Promise.all([
-      ProfileService.bootstrap(),
+      AuthService.bootstrap(),
       StageRepository.loadAsync(),
       GameDataRepository.loadAsync(),
     ]);
-    director.loadScene(SCENE_NAMES.Login);
+    await ProfileService.bootstrap();
+    director.loadScene(AuthService.getCurrentUser() ? SCENE_NAMES.Lobby : SCENE_NAMES.Login);
   }
 }

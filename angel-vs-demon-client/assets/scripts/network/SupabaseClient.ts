@@ -17,6 +17,12 @@ export interface SupabaseSession {
   };
 }
 
+export interface EmailSignUpResult {
+  userId: string;
+  session: SupabaseSession | null;
+  needsEmailConfirmation: boolean;
+}
+
 export class SupabaseClient {
   private static readonly sessionStorageKey = 'avd.supabase.session';
   private static config: SupabaseConfig | null = null;
@@ -91,6 +97,65 @@ export class SupabaseClient {
     }
   }
 
+  static async signUpWithEmail(email: string, password: string): Promise<EmailSignUpResult> {
+    this.setSession(null);
+
+    const response = await this.requestAuth<Partial<SupabaseSession>>('POST', '/signup', {
+      email,
+      password,
+    });
+
+    if (response.access_token && response.user) {
+      const session = response as SupabaseSession;
+      this.setSession(session);
+      return {
+        userId: session.user.id,
+        session,
+        needsEmailConfirmation: false,
+      };
+    }
+
+    if (response.user?.id) {
+      return {
+        userId: response.user.id,
+        session: null,
+        needsEmailConfirmation: true,
+      };
+    }
+
+    const session = await this.signInWithPassword(email, password);
+    return {
+      userId: session.user.id,
+      session,
+      needsEmailConfirmation: false,
+    };
+  }
+
+  static async signInWithPassword(email: string, password: string): Promise<SupabaseSession> {
+    this.setSession(null);
+    const session = await this.requestAuth<SupabaseSession>('POST', '/token?grant_type=password', {
+      email,
+      password,
+    });
+    this.setSession(session);
+    return session;
+  }
+
+  static async signOut(): Promise<void> {
+    const session = this.session;
+    try {
+      if (session && session.access_token !== 'local_fallback_token') {
+        await this.requestAuth('POST', '/logout', undefined, {
+          Authorization: `Bearer ${session.access_token}`,
+        });
+      }
+    } catch (error) {
+      console.warn('[SupabaseClient] Sign-out request failed, clearing local session anyway.', error);
+    } finally {
+      this.setSession(null);
+    }
+  }
+
   static async queryMaybeSingle<T>(table: string, query: string): Promise<T | null> {
     const result = await this.requestRest<T[]>(
       'GET',
@@ -128,13 +193,19 @@ export class SupabaseClient {
     return raw ? (JSON.parse(raw) as SupabaseSession) : null;
   }
 
-  private static async requestAuth<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private static async requestAuth<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
     const config = this.requireConfig();
     const response = await fetch(`${config.url}/auth/v1${path}`, {
       method,
       headers: {
         apikey: config.anonKey,
         'Content-Type': 'application/json',
+        ...extraHeaders,
       },
       body: body ? JSON.stringify(body) : undefined,
     });

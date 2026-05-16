@@ -21,10 +21,10 @@ import { SwordWeapon } from '../game/player/SwordWeapon';
 import { EnemyController } from '../game/enemy/EnemyController';
 import { BossController } from '../game/enemy/BossController';
 import { StageManager } from '../game/stage/StageManager';
-import { StageRepository, Wave } from '../data/StageRepository';
+import { DEFAULT_STAGE_TIME_LIMIT_SECONDS, StageRepository, Wave } from '../data/StageRepository';
 import { DebugShape } from './DebugShape';
 import { SCENE_NAMES } from '../core/GameConfig';
-import { ProfileService } from '../auth/ProfileService';
+import { ProfileService, RunState } from '../auth/ProfileService';
 import { EventBus } from '../core/EventBus';
 import { SoundManager } from '../audio/SoundManager';
 import { BackgroundArt } from './BackgroundArt';
@@ -39,6 +39,9 @@ const { ccclass } = _decorator;
 
 @ccclass('BattleSceneController')
 export class BattleSceneController extends Component {
+  private static readonly WORLD_BACKGROUND_WIDTH = 2800;
+  private static readonly WORLD_BACKGROUND_HEIGHT = 1600;
+
   private static readonly SPAWN_AREA_VARIANTS: Record<string, string[]> = {
     top: ['top', 'top', 'left', 'right', 'back', 'random'],
     bottom: ['bottom', 'bottom', 'left', 'right', 'front', 'random'],
@@ -52,6 +55,8 @@ export class BattleSceneController extends Component {
 
   private stageManager: StageManager | null = null;
   private hudLabel: Label | null = null;
+  private playerHpBarFill: Node | null = null;
+  private playerHpLabel: Label | null = null;
   private skillCooldownLabel: Label | null = null;
   private playerController: PlayerController | null = null;
   private swordWeaponRef: SwordWeapon | null = null;
@@ -83,10 +88,17 @@ export class BattleSceneController extends Component {
   private killCount = 0;
   private killStreak = 0;
   private battleTimeElapsed = 0;
+  private stageTimeLimitSeconds = DEFAULT_STAGE_TIME_LIMIT_SECONDS;
   private rewardGold = 0;
   private bossSpawned = false;
+  private runStateSaveElapsed = 0;
   private screenShakeTimer = 0;
   private screenShakeMagnitude = 0;
+
+  private worldRootNode: Node | null = null;
+
+  // 미니맵
+  private minimapGraphics: Graphics | null = null;
 
   // 보스 HP 바 UI
   private bossController: BossController | null = null;
@@ -118,7 +130,9 @@ export class BattleSceneController extends Component {
   };
 
   start(): void {
+    SoundManager.playBattleBgm();
     this.ensureCanvas();
+    this.ensureWorldRoot();
     this.ensureEnemyRoot();
     this.stageManager = this.ensureStageManager().getComponent(StageManager);
     this.ensureBackground();
@@ -126,7 +140,10 @@ export class BattleSceneController extends Component {
     this.ensurePlayer();
     this.refreshHud();
     this.loadStageData();
-    this.showStartPrompt();
+    const restored = this.restoreRunState();
+    if (!restored) {
+      this.showStartPrompt();
+    }
     EventBus.on('enemy:killed', this.onEnemyKilledHandler);
     EventBus.on('player:damaged', this.onPlayerDamagedHandler);
     EventBus.on('boss:charge', this.onBossChargeHandler);
@@ -136,6 +153,9 @@ export class BattleSceneController extends Component {
   }
 
   onDestroy(): void {
+    if (!this.resultShown) {
+      this.saveRunStateSnapshot();
+    }
     EventBus.off('enemy:killed', this.onEnemyKilledHandler);
     EventBus.off('player:damaged', this.onPlayerDamagedHandler);
     EventBus.off('boss:charge', this.onBossChargeHandler);
@@ -146,11 +166,36 @@ export class BattleSceneController extends Component {
 
   private loadStageData(): void {
     const stageId = this.stageManager?.getCurrentStageId() ?? 1;
+    ProfileService.setCurrentStage(stageId);
+    const stageDef = StageRepository.getStage(stageId);
+    this.stageTimeLimitSeconds = stageDef.timeLimitSeconds ?? DEFAULT_STAGE_TIME_LIMIT_SECONDS;
     this.waves = StageRepository.getStageWaves(stageId);
     this.currentWaveIndex = 0;
     this.waveTimer = 0;
     this.spawnQueue = [];
     this.stageLoaded = true;
+  }
+
+  private restoreRunState(): boolean {
+    const runState = ProfileService.getRunState();
+    const stageId = this.stageManager?.getCurrentStageId() ?? 1;
+    if (!runState) {
+      return false;
+    }
+    if (runState.stageId !== stageId) {
+      ProfileService.clearRunState();
+      return false;
+    }
+
+    this.currentWaveIndex = Math.max(0, Math.min(runState.waveIndex, this.waves.length));
+    this.waveTimer = Math.max(0, runState.waveTimer);
+    this.battleTimeElapsed = Math.max(0, runState.battleTimeElapsed);
+    this.killCount = Math.max(0, runState.killCount);
+    this.bossSpawned = runState.bossSpawned;
+    this.spawnQueue = runState.spawnQueue.map((entry) => ({ ...entry }));
+    this.playerController?.setCurrentHp(runState.playerHp);
+    this.gameStarted = true;
+    return true;
   }
 
   update(deltaTime: number): void {
@@ -166,16 +211,44 @@ export class BattleSceneController extends Component {
       }
     }
 
-    this.battleTimeElapsed += deltaTime;
+    this.battleTimeElapsed = Math.min(this.stageTimeLimitSeconds, this.battleTimeElapsed + deltaTime);
+    if (this.checkBattleTimedOut()) {
+      return;
+    }
     this.waveTimer += deltaTime;
+    this.runStateSaveElapsed += deltaTime;
     this.updateScreenShake(deltaTime);
     this.processSpawnQueue(deltaTime);
     this.spawnNextWave();
     this.updateSkills(deltaTime);
     this.refreshHud();
     this.refreshBossHpBar();
+    this.updateMinimap();
     this.checkBattleFailed();
     this.checkStageClear();
+
+    if (this.runStateSaveElapsed >= 1.5) {
+      this.runStateSaveElapsed = 0;
+      this.saveRunStateSnapshot();
+    }
+  }
+
+  private saveRunStateSnapshot(): void {
+    if (!this.stageLoaded || this.resultShown || !this.gameStarted || !this.playerController || this.playerController.isDead()) {
+      return;
+    }
+
+    const runState: RunState = {
+      stageId: this.stageManager?.getCurrentStageId() ?? 1,
+      waveIndex: this.currentWaveIndex,
+      waveTimer: this.waveTimer,
+      battleTimeElapsed: this.battleTimeElapsed,
+      killCount: this.killCount,
+      playerHp: this.playerController.getCurrentHp(),
+      bossSpawned: this.bossSpawned,
+      spawnQueue: this.spawnQueue.map((entry) => ({ ...entry })),
+    };
+    ProfileService.saveRunState(runState);
   }
 
   // ─── 웨이브 스폰 ───────────────────────────────────────────────────────
@@ -270,21 +343,40 @@ export class BattleSceneController extends Component {
   }
 
   private createSpawnPosition(area: string): Vec3 {
-    const pos = StageRepository.getSpawnPosition(area);
-    const spread = area === 'center' ? 200 : area === 'random' ? 180 : 120;
-    const skewX = area === 'left' ? -24 : area === 'right' ? 24 : 0;
-    const skewY = area === 'top' || area === 'back' ? 24 : area === 'bottom' || area === 'front' ? -24 : 0;
-    return new Vec3(
-      pos.x + skewX + (Math.random() - 0.5) * spread,
-      pos.y + skewY + (Math.random() - 0.5) * spread,
-      0,
-    );
+    const halfW = 570;
+    const halfH = 305;
+    const bandX = halfW * (0.62 + Math.random() * 0.34);
+    const bandY = halfH * (0.62 + Math.random() * 0.34);
+    const randomX = () => (Math.random() * 2 - 1) * halfW;
+    const randomY = () => (Math.random() * 2 - 1) * halfH;
+
+    switch (area) {
+      case 'top':
+      case 'back':
+        return new Vec3(randomX(), bandY, 0);
+      case 'bottom':
+      case 'front':
+        return new Vec3(randomX(), -bandY, 0);
+      case 'left':
+        return new Vec3(-bandX, randomY(), 0);
+      case 'right':
+        return new Vec3(bandX, randomY(), 0);
+      case 'center':
+        return new Vec3((Math.random() * 2 - 1) * halfW * 0.55, (Math.random() * 2 - 1) * halfH * 0.55, 0);
+      case 'random':
+      default:
+        return new Vec3(randomX(), randomY(), 0);
+    }
   }
 
-  private spawnEnemy(enemyType: string, position: Vec3): void {
+  private worldPosToEnemyRoot(worldPos: Vec3): Vec3 {
+    return worldPos.clone().subtract(this.ensureWorldRoot().position);
+  }
+
+  private spawnEnemy(enemyType: string, worldPosition: Vec3): void {
     const enemyRoot = this.ensureEnemyRoot();
     const enemy = new Node(`Enemy_${enemyType}_${Date.now()}_${Math.random()}`);
-    enemy.setPosition(position);
+    enemy.setPosition(this.worldPosToEnemyRoot(worldPosition));
 
     const baseColorMap: Record<string, Color> = {
       smile_zombie:  new Color(255,  80,  80, 255),
@@ -383,7 +475,7 @@ export class BattleSceneController extends Component {
   private spawnBoss(bossId: string): void {
     const enemyRoot = this.ensureEnemyRoot();
     const boss = new Node(`Boss_${bossId}`);
-    boss.setPosition(new Vec3(0, 220, 0));
+    boss.setPosition(this.worldPosToEnemyRoot(new Vec3(0, 220, 0)));
 
     const bossData = GameDataRepository.getBossStat(bossId);
 
@@ -452,8 +544,8 @@ export class BattleSceneController extends Component {
     bossController.setSpawnMinionsCallback(() => {
       for (let i = 0; i < bossController.minionCount; i++) {
         const offset = new Vec3((Math.random() - 0.5) * 120, (Math.random() - 0.5) * 120, 0);
-        const minionPos = boss.position.clone().add(offset);
-        this.spawnEnemy(bossController.minionType, minionPos);
+        const minionWorldPos = boss.worldPosition.clone().add(offset);
+        this.spawnEnemy(bossController.minionType, minionWorldPos);
       }
     });
 
@@ -497,12 +589,12 @@ export class BattleSceneController extends Component {
     const skillLv = ProfileService.getSkillLevel('skill_star_burst');
     const burstDamage = 12 + weaponLv * 4 + (skillLv - 1) * 8;
     const burstRange = 280 + (skillLv - 1) * 30;
-    const playerPos = this.playerController?.node.position ?? new Vec3(0, 0, 0);
+    const playerPos = this.playerController?.node.worldPosition ?? new Vec3(0, 0, 0);
     // 가까운 순으로 정렬 후 최대 히트 수 제한 — 전 범위 동시 사망 방지
     const maxHits = 3 + skillLv;
     const inRange = this.ensureEnemyRoot().children
-      .filter(e => e.isValid && Vec3.distance(playerPos, e.position) <= burstRange)
-      .sort((a, b) => Vec3.distance(playerPos, a.position) - Vec3.distance(playerPos, b.position));
+      .filter(e => e.isValid && Vec3.distance(playerPos, e.worldPosition) <= burstRange)
+      .sort((a, b) => Vec3.distance(playerPos, a.worldPosition) - Vec3.distance(playerPos, b.worldPosition));
     for (let i = 0; i < Math.min(inRange.length, maxHits); i++) {
       inRange[i].getComponent(EnemyController)?.receiveDamage(burstDamage);
     }
@@ -517,7 +609,7 @@ export class BattleSceneController extends Component {
     const skillLv = ProfileService.getSkillLevel('skill_heaven_strike');
     const strikeDamage = 28 + weaponLv * 6 + (skillLv - 1) * 12;
     target.getComponent(EnemyController)?.receiveDamage(strikeDamage);
-    this.showHeavenStrikeEffect(target.position.clone());
+    this.showHeavenStrikeEffect(target.worldPosition.clone());
     this.triggerScreenShake(0.1, 9);
   }
 
@@ -533,7 +625,7 @@ export class BattleSceneController extends Component {
         ?.getNearestEnemy();
       if (nearest) {
         const dir = new Vec3();
-        Vec3.subtract(dir, nearest.position, this.playerController.node.position);
+        Vec3.subtract(dir, nearest.worldPosition, this.playerController.node.worldPosition);
         direction = dir.normalize();
       }
     }
@@ -544,9 +636,9 @@ export class BattleSceneController extends Component {
     const skillLv = ProfileService.getSkillLevel('skill_holy_dash');
     const dashDamage = 20 + weaponLv * 5 + (skillLv - 1) * 8;
     const dashRange = 110 + (skillLv - 1) * 15;
-    const playerPos = this.playerController.node.position;
+    const playerPos = this.playerController.node.worldPosition;
     this.ensureEnemyRoot().children.forEach((enemyNode) => {
-      if (Vec3.distance(playerPos, enemyNode.position) <= dashRange) {
+      if (Vec3.distance(playerPos, enemyNode.worldPosition) <= dashRange) {
         enemyNode.getComponent(EnemyController)?.receiveDamage(dashDamage);
       }
     });
@@ -589,7 +681,7 @@ export class BattleSceneController extends Component {
     const range = 100;
     const damage = 20;
     this.ensureEnemyRoot().children.forEach((enemyNode) => {
-      if (Vec3.distance(position, enemyNode.position) <= range) {
+      if (Vec3.distance(position, enemyNode.worldPosition) <= range) {
         enemyNode.getComponent(EnemyController)?.receiveDamage(damage);
       }
     });
@@ -602,8 +694,22 @@ export class BattleSceneController extends Component {
 
     this.freezeBattle();
     this.resultShown = true;
+    ProfileService.clearRunState();
     SoundManager.playGameOver();
     this.showResultOverlay(false);
+  }
+
+  private checkBattleTimedOut(): boolean {
+    if (this.stageTimeLimitSeconds <= 0 || this.battleTimeElapsed < this.stageTimeLimitSeconds) {
+      return false;
+    }
+
+    this.freezeBattle();
+    this.resultShown = true;
+    ProfileService.clearRunState();
+    SoundManager.playGameOver();
+    this.showResultOverlay(false);
+    return true;
   }
 
   private checkStageClear(): void {
@@ -643,7 +749,6 @@ export class BattleSceneController extends Component {
 
   private freezeBattle(): void {
     this.spawnQueue = [];
-    this.spawnQueueTimer = 0;
     this.stageLoaded = false;
     this.gameStarted = false;
 
@@ -834,8 +939,9 @@ export class BattleSceneController extends Component {
     const hp = this.playerController?.getCurrentHp() ?? 0;
     const maxHp = this.playerController?.getMaxHp() ?? 0;
     const stageId = this.stageManager.getCurrentStageId();
-    const mins = Math.floor(this.battleTimeElapsed / 60);
-    const secs = Math.floor(this.battleTimeElapsed % 60);
+    const remainingSeconds = Math.ceil(this.getRemainingBattleTime());
+    const mins = Math.floor(remainingSeconds / 60);
+    const secs = remainingSeconds % 60;
 
     const streakText =
       ProfileService.hasRelic('relic_holy_grail') && this.killStreak > 0
@@ -843,11 +949,45 @@ export class BattleSceneController extends Component {
         : '';
 
     this.hudLabel.string = [
-      `Stage ${stageId}  Wave: ${this.currentWaveIndex}/${this.waves.length}  ${mins}:${secs.toString().padStart(2, '0')}`,
-      `HP: ${hp}/${maxHp}  적: ${remaining}  처치: ${this.killCount}${streakText}`,
+      `Stage ${stageId}  Wave: ${this.currentWaveIndex}/${this.waves.length}  Time: ${mins}:${secs.toString().padStart(2, '0')}`,
+      `적: ${remaining}  처치: ${this.killCount}${streakText}`,
     ].join('\n');
 
+    this.refreshPlayerHpHud(hp, maxHp);
+
     this.refreshSkillCooldownHud();
+  }
+
+  private getRemainingBattleTime(): number {
+    return Math.max(0, this.stageTimeLimitSeconds - this.battleTimeElapsed);
+  }
+
+  private refreshPlayerHpHud(hp: number, maxHp: number): void {
+    if (!this.playerHpBarFill || !this.playerHpLabel) return;
+
+    const ratio = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    const barWidth = 324 * ratio;
+    const transform = this.playerHpBarFill.getComponent(UITransform);
+    if (transform) {
+      transform.setContentSize(barWidth, 14);
+    }
+
+    const g = this.playerHpBarFill.getComponent(Graphics);
+    if (g) {
+      g.clear();
+      g.fillColor =
+        ratio > 0.6
+          ? new Color(64, 215, 255, 240)
+          : ratio > 0.3
+          ? new Color(255, 205, 72, 240)
+          : new Color(255, 82, 74, 240);
+      if (barWidth > 0) {
+        g.roundRect(0, -7, barWidth, 14, 7);
+        g.fill();
+      }
+    }
+
+    this.playerHpLabel.string = `HP ${hp}/${maxHp}`;
   }
 
   private refreshSkillCooldownHud(): void {
@@ -883,42 +1023,53 @@ export class BattleSceneController extends Component {
   // ─── 시각 효과 ────────────────────────────────────────────────────────
 
   private ensureBackground(): void {
-    if (this.node.getChildByName('Background') || this.node.getChildByName('ProceduralBg')) return;
+    const worldRoot = this.ensureWorldRoot();
+    if (worldRoot.getChildByName('Background') || worldRoot.getChildByName('ProceduralBg')) return;
 
     const stageId = this.stageManager?.getCurrentStageId() ?? 1;
     const theme = ProceduralBackground.getTheme(stageId);
 
     if (theme !== 'none') {
-      // 절차적 배경 (이미지 없음)
-      ProceduralBackground.apply(this.node, stageId);
+      // 절차적 배경 — WorldRoot 자식으로 붙여 플레이어 이동 시 함께 스크롤
+      ProceduralBackground.apply(worldRoot, stageId, {
+        width: BattleSceneController.WORLD_BACKGROUND_WIDTH,
+        height: BattleSceneController.WORLD_BACKGROUND_HEIGHT,
+      });
     } else {
-      // 기존 이미지 배경 (stage 101~300, 401~1000)
-      BackgroundArt.apply(this.node, 'images/backgrounds/battle_forest', {
+      // 기존 이미지 배경
+      BackgroundArt.apply(worldRoot, 'images/backgrounds/battle_forest', {
         overlayColor: new Color(6, 10, 16, 255),
         overlayAlpha: 96,
+        width: BattleSceneController.WORLD_BACKGROUND_WIDTH,
+        height: BattleSceneController.WORLD_BACKGROUND_HEIGHT,
       });
 
-      // 아레나 그리드 오버레이 (이미지 배경에만 추가)
+      // 아레나 그리드 오버레이
+      const halfW = BattleSceneController.WORLD_BACKGROUND_WIDTH / 2;
+      const halfH = BattleSceneController.WORLD_BACKGROUND_HEIGHT / 2;
       const bg = new Node('Background');
       bg.setPosition(0, 0);
-      bg.addComponent(UITransform).setContentSize(1280, 720);
+      bg.addComponent(UITransform).setContentSize(
+        BattleSceneController.WORLD_BACKGROUND_WIDTH,
+        BattleSceneController.WORLD_BACKGROUND_HEIGHT,
+      );
       const g = bg.addComponent(Graphics);
 
       g.strokeColor = new Color(32, 48, 72, 115);
       g.lineWidth = 1;
-      for (let x = -640; x <= 640; x += 80) {
-        g.moveTo(x, -360); g.lineTo(x, 360); g.stroke();
+      for (let x = -halfW; x <= halfW; x += 80) {
+        g.moveTo(x, -halfH); g.lineTo(x, halfH); g.stroke();
       }
-      for (let y = -360; y <= 360; y += 80) {
-        g.moveTo(-640, y); g.lineTo(640, y); g.stroke();
+      for (let y = -halfH; y <= halfH; y += 80) {
+        g.moveTo(-halfW, y); g.lineTo(halfW, y); g.stroke();
       }
 
       g.strokeColor = new Color(55, 55, 110, 210);
       g.lineWidth = 2;
-      g.rect(-575, -312, 1150, 624);
+      g.rect(-halfW + 16, -halfH + 16, BattleSceneController.WORLD_BACKGROUND_WIDTH - 32, BattleSceneController.WORLD_BACKGROUND_HEIGHT - 32);
       g.stroke();
 
-      this.node.addChild(bg);
+      worldRoot.addChild(bg);
       bg.setSiblingIndex(1);
     }
   }
@@ -972,6 +1123,65 @@ export class BattleSceneController extends Component {
     return GameDataRepository.getBossStat(bossId).displayName;
   }
 
+  private updateMinimap(): void {
+    const g = this.minimapGraphics;
+    if (!g) return;
+
+    const MAP_W = 160;
+    const MAP_H = 90;
+    const HALF_W = MAP_W / 2;
+    const HALF_H = MAP_H / 2;
+    // 월드 배경 2800×1600 → 미니맵 160×90
+    const SCALE = MAP_W / BattleSceneController.WORLD_BACKGROUND_WIDTH;
+
+    g.clear();
+
+    // 아레나 경계 (WorldRoot 이동 범위 ±570 × ±305)
+    const aW = 570 * SCALE;
+    const aH = 305 * SCALE;
+    g.strokeColor = new Color(70, 110, 190, 80);
+    g.lineWidth = 0.8;
+    g.rect(-aW, -aH, aW * 2, aH * 2);
+    g.stroke();
+
+    // 플레이어 월드 위치 (Canvas에 고정 → 항상 Canvas worldPosition)
+    const playerNode = this.node.getChildByName('Player');
+    const playerWorldPos = playerNode?.worldPosition ?? this.node.worldPosition;
+
+    // 적 점 그리기
+    const enemyRoot = this.ensureEnemyRoot();
+    for (const child of enemyRoot.children) {
+      if (!child.isValid) continue;
+      const rel = child.worldPosition.clone().subtract(playerWorldPos);
+      const mx = Math.max(-HALF_W + 3, Math.min(HALF_W - 3, rel.x * SCALE));
+      const my = Math.max(-HALF_H + 3, Math.min(HALF_H - 3, rel.y * SCALE));
+      if (child.getComponent(BossController)) {
+        // 보스: 큰 노란색 점
+        g.fillColor = new Color(255, 200, 40, 230);
+        g.circle(mx, my, 4.5);
+        g.fill();
+        g.strokeColor = new Color(255, 255, 140, 180);
+        g.lineWidth = 1;
+        g.circle(mx, my, 4.5);
+        g.stroke();
+      } else {
+        // 일반 적: 빨간 점
+        g.fillColor = new Color(255, 65, 65, 200);
+        g.circle(mx, my, 2.5);
+        g.fill();
+      }
+    }
+
+    // 플레이어: 중앙 시안 점
+    g.fillColor = new Color(80, 220, 255, 255);
+    g.circle(0, 0, 3.5);
+    g.fill();
+    g.strokeColor = new Color(255, 255, 255, 210);
+    g.lineWidth = 1;
+    g.circle(0, 0, 3.5);
+    g.stroke();
+  }
+
   private refreshBossHpBar(): void {
     if (!this.bossController || !this.bossHpBarFill) return;
 
@@ -1021,7 +1231,7 @@ export class BattleSceneController extends Component {
     this.showTopWarning('PHASE SHIFT', new Color(255, 180, 80, 255));
     const fx = new Node('BossPhaseFx');
     fx.setParent(this.node);
-    fx.setPosition(position.x, position.y, 0);
+    fx.setWorldPosition(position.x, position.y, 0);
     fx.addComponent(UITransform).setContentSize(220, 220);
     const g = fx.addComponent(Graphics);
     g.strokeColor = new Color(255, 120, 80, 190);
@@ -1040,7 +1250,7 @@ export class BattleSceneController extends Component {
     this.showTopWarning('DANGER', new Color(255, 120, 120, 255));
     const fx = new Node('BossChargeFx');
     fx.setParent(this.node);
-    fx.setPosition(position.x, position.y, 0);
+    fx.setWorldPosition(position.x, position.y, 0);
     fx.addComponent(UITransform).setContentSize(360, 60);
     fx.setRotationFromEuler(0, 0, Math.atan2(direction.y, direction.x) * (180 / Math.PI));
     const g = fx.addComponent(Graphics);
@@ -1060,7 +1270,7 @@ export class BattleSceneController extends Component {
       this.showTopWarning('VOID NOVA', new Color(255, 180, 100, 255));
       const fx = new Node('BossNovaFx');
       fx.setParent(this.node);
-      fx.setPosition(payload.position.x, payload.position.y, 0);
+      fx.setWorldPosition(payload.position.x, payload.position.y, 0);
       const radius = payload.radius ?? 150;
       fx.addComponent(UITransform).setContentSize(radius * 2, radius * 2);
       const g = fx.addComponent(Graphics);
@@ -1081,7 +1291,7 @@ export class BattleSceneController extends Component {
       this.showTopWarning(`SUMMON x${payload.count ?? 0}`, new Color(180, 255, 120, 255));
       const fx = new Node('BossSummonFx');
       fx.setParent(this.node);
-      fx.setPosition(payload.position.x, payload.position.y, 0);
+      fx.setWorldPosition(payload.position.x, payload.position.y, 0);
       fx.addComponent(UITransform).setContentSize(180, 180);
       const g = fx.addComponent(Graphics);
       g.strokeColor = new Color(170, 255, 140, 180);
@@ -1098,7 +1308,7 @@ export class BattleSceneController extends Component {
     this.showTopWarning('BERSERK', new Color(255, 120, 220, 255));
     const fx = new Node('BossFrenzyFx');
     fx.setParent(this.node);
-    fx.setPosition(payload.position.x, payload.position.y, 0);
+    fx.setWorldPosition(payload.position.x, payload.position.y, 0);
     fx.addComponent(UITransform).setContentSize(220, 100);
     const g = fx.addComponent(Graphics);
     g.strokeColor = new Color(255, 120, 220, 180);
@@ -1181,7 +1391,7 @@ export class BattleSceneController extends Component {
   private showSkillBurst(position: Vec3, radius: number): void {
     const burst = new Node('SkillBurst');
     burst.setParent(this.node);
-    burst.setPosition(position.x, position.y, 0);
+    burst.setWorldPosition(position.x, position.y, 0);
     burst.addComponent(UITransform).setContentSize(radius * 2, radius * 2);
     burst.addComponent(UIOpacity).opacity = 210;
     const g = burst.addComponent(Graphics);
@@ -1198,7 +1408,7 @@ export class BattleSceneController extends Component {
   private showHeavenStrikeEffect(position: Vec3): void {
     const strike = new Node('HeavenStrikeFx');
     strike.setParent(this.node);
-    strike.setPosition(position.x, position.y + 45, 0);
+    strike.setWorldPosition(position.x, position.y + 45, 0);
     strike.addComponent(UITransform).setContentSize(60, 180);
     const g = strike.addComponent(Graphics);
     g.fillColor = new Color(255, 250, 180, 110);
@@ -1213,7 +1423,7 @@ export class BattleSceneController extends Component {
   private showHolyDashTrail(position: Vec3, range: number): void {
     const trail = new Node('HolyDashFx');
     trail.setParent(this.node);
-    trail.setPosition(position.x, position.y, 0);
+    trail.setWorldPosition(position.x, position.y, 0);
     trail.addComponent(UITransform).setContentSize(range * 2, 50);
     const g = trail.addComponent(Graphics);
     g.fillColor = new Color(110, 220, 255, 70);
@@ -1229,7 +1439,7 @@ export class BattleSceneController extends Component {
   private showDeathPop(position: Vec3): void {
     const pop = new Node('DeathPop');
     pop.setParent(this.node);
-    pop.setPosition(position.x, position.y);
+    pop.setWorldPosition(position.x, position.y, 0);
     pop.addComponent(UITransform).setContentSize(64, 64);
     pop.addComponent(UIOpacity).opacity = 220;
     const g = pop.addComponent(Graphics);
@@ -1282,7 +1492,7 @@ export class BattleSceneController extends Component {
   private showEnemySummonEffect(position: Vec3, radius: number): void {
     const fx = new Node('EnemySummonFx');
     fx.setParent(this.node);
-    fx.setPosition(position.x, position.y, 0);
+    fx.setWorldPosition(position.x, position.y, 0);
     fx.addComponent(UITransform).setContentSize(radius * 2, radius * 2);
     fx.addComponent(UIOpacity).opacity = 190;
     const g = fx.addComponent(Graphics);
@@ -1315,11 +1525,22 @@ export class BattleSceneController extends Component {
     return canvas;
   }
 
+  private ensureWorldRoot(): Node {
+    let root = this.node.getChildByName('WorldRoot');
+    if (!root) {
+      root = new Node('WorldRoot');
+      this.node.addChild(root);
+    }
+    this.worldRootNode = root;
+    return root;
+  }
+
   private ensureEnemyRoot(): Node {
-    let root = this.node.getChildByName('EnemyRoot');
+    const worldRoot = this.ensureWorldRoot();
+    let root = worldRoot.getChildByName('EnemyRoot');
     if (!root) {
       root = new Node('EnemyRoot');
-      this.node.addChild(root);
+      worldRoot.addChild(root);
     }
     return root;
   }
@@ -1338,24 +1559,27 @@ export class BattleSceneController extends Component {
 
     if (canvas.getChildByName('HudLabel')) {
       this.hudLabel = canvas.getChildByName('HudLabel')?.getComponent(Label) ?? null;
+      this.playerHpBarFill = canvas.getChildByName('PlayerHpBarFill') ?? null;
+      this.playerHpLabel = canvas.getChildByName('PlayerHpLabel')?.getComponent(Label) ?? null;
       this.skillCooldownLabel = canvas.getChildByName('SkillCooldownLabel')?.getComponent(Label) ?? null;
+      this.minimapGraphics = canvas.getChildByName('Minimap')?.getComponent(Graphics) ?? null;
       return;
     }
 
     // 상단 정보 HUD — 왼쪽에만 배치 (보스 HP바와 겹침 방지)
     const hudPanel = new Node('HudPanel');
     hudPanel.setPosition(-430, 325);
-    hudPanel.addComponent(UITransform).setContentSize(392, 78);
+    hudPanel.addComponent(UITransform).setContentSize(392, 96);
     const hudG = hudPanel.addComponent(Graphics);
     hudG.fillColor = new Color(8, 18, 40, 205);
-    hudG.roundRect(-196, -39, 392, 78, 12);
+    hudG.roundRect(-196, -48, 392, 96, 12);
     hudG.fill();
     hudG.fillColor = new Color(255, 255, 255, 12);
-    hudG.roundRect(-192, 3, 384, 28, 10);
+    hudG.roundRect(-192, 10, 384, 28, 10);
     hudG.fill();
     hudG.strokeColor = new Color(95, 145, 205, 145);
     hudG.lineWidth = 1.2;
-    hudG.roundRect(-196, -39, 392, 78, 12);
+    hudG.roundRect(-196, -48, 392, 96, 12);
     hudG.stroke();
     canvas.addChild(hudPanel);
 
@@ -1365,9 +1589,45 @@ export class BattleSceneController extends Component {
     this.hudLabel.fontSize = 18;
     this.hudLabel.lineHeight = 26;
     this.hudLabel.color = new Color(255, 255, 255, 255);
-    hudNode.addComponent(UITransform).setContentSize(360, 62);
-    hudNode.setPosition(-430, 325);
+    hudNode.addComponent(UITransform).setContentSize(360, 34);
+    hudNode.setPosition(-430, 340);
     canvas.addChild(hudNode);
+
+    const hpBg = new Node('PlayerHpBarBg');
+    hpBg.setPosition(-430, 303);
+    hpBg.addComponent(UITransform).setContentSize(330, 20);
+    const hpBgG = hpBg.addComponent(Graphics);
+    hpBgG.fillColor = new Color(4, 10, 22, 230);
+    hpBgG.roundRect(-165, -10, 330, 20, 10);
+    hpBgG.fill();
+    hpBgG.strokeColor = new Color(120, 185, 255, 130);
+    hpBgG.lineWidth = 1;
+    hpBgG.roundRect(-165, -10, 330, 20, 10);
+    hpBgG.stroke();
+    canvas.addChild(hpBg);
+
+    const hpFill = new Node('PlayerHpBarFill');
+    hpFill.setPosition(-592, 303);
+    hpFill.addComponent(UITransform).setContentSize(324, 14);
+    const hpFillG = hpFill.addComponent(Graphics);
+    hpFillG.fillColor = new Color(64, 215, 255, 240);
+    hpFillG.roundRect(0, -7, 324, 14, 7);
+    hpFillG.fill();
+    canvas.addChild(hpFill);
+    this.playerHpBarFill = hpFill;
+
+    const hpLabelNode = new Node('PlayerHpLabel');
+    hpLabelNode.setPosition(-430, 303);
+    hpLabelNode.addComponent(UITransform).setContentSize(320, 22);
+    this.playerHpLabel = hpLabelNode.addComponent(Label);
+    this.playerHpLabel.string = '';
+    this.playerHpLabel.fontSize = 14;
+    this.playerHpLabel.lineHeight = 18;
+    this.playerHpLabel.color = new Color(244, 250, 255, 245);
+    this.playerHpLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+    this.playerHpLabel.verticalAlign = Label.VerticalAlign.CENTER;
+    this.playerHpLabel.isBold = true;
+    canvas.addChild(hpLabelNode);
 
     const cdPanel = new Node('SkillCooldownPanel');
     cdPanel.setPosition(0, -310);
@@ -1391,25 +1651,61 @@ export class BattleSceneController extends Component {
     cdNode.addComponent(UITransform).setContentSize(580, 28);
     cdNode.setPosition(0, -310);
     canvas.addChild(cdNode);
+
+    // 미니맵 (우측 상단)
+    const MAP_W = 160;
+    const MAP_H = 90;
+    const MAP_X = 495;
+    const MAP_Y = 290;
+
+    const mapPanel = new Node('MinimapPanel');
+    mapPanel.setPosition(MAP_X, MAP_Y);
+    mapPanel.addComponent(UITransform).setContentSize(MAP_W + 6, MAP_H + 6);
+    const panelG = mapPanel.addComponent(Graphics);
+    panelG.fillColor = new Color(6, 14, 30, 215);
+    panelG.roundRect(-MAP_W / 2 - 3, -MAP_H / 2 - 3, MAP_W + 6, MAP_H + 6, 5);
+    panelG.fill();
+    panelG.strokeColor = new Color(80, 130, 210, 170);
+    panelG.lineWidth = 1.5;
+    panelG.roundRect(-MAP_W / 2 - 3, -MAP_H / 2 - 3, MAP_W + 6, MAP_H + 6, 5);
+    panelG.stroke();
+    canvas.addChild(mapPanel);
+
+    const mapLabel = new Node('MinimapLabel');
+    mapLabel.setPosition(MAP_X, MAP_Y + MAP_H / 2 + 10);
+    mapLabel.addComponent(UITransform).setContentSize(MAP_W, 14);
+    const ml = mapLabel.addComponent(Label);
+    ml.string = 'MAP';
+    ml.fontSize = 11;
+    ml.color = new Color(140, 180, 240, 180);
+    ml.horizontalAlign = Label.HorizontalAlign.CENTER;
+    canvas.addChild(mapLabel);
+
+    const mapNode = new Node('Minimap');
+    mapNode.setPosition(MAP_X, MAP_Y);
+    mapNode.addComponent(UITransform).setContentSize(MAP_W, MAP_H);
+    this.minimapGraphics = mapNode.addComponent(Graphics);
+    canvas.addChild(mapNode);
   }
 
   private ensurePlayer(): void {
     const existing = this.node.getChildByName('Player');
     if (existing) {
       this.playerController = existing.getComponent(PlayerController);
+      this.playerController?.setWorldRoot(this.ensureWorldRoot());
       this.swordWeaponRef = existing.getChildByName('Weapon')?.getComponent(SwordWeapon) ?? null;
       this.baseWeaponDamage = this.swordWeaponRef?.damage ?? ProfileService.getWeaponDamage();
       return;
     }
 
     const player = new Node('Player');
-    player.setPosition(new Vec3(0, -120, 0));
+    player.setPosition(new Vec3(0, 0, 0));
     const shape = player.addComponent(DebugShape);
     shape.fillColor = new Color(120, 200, 255, 0);
     shape.width = 44;
     shape.height = 44;
     shape.suppressRendering = true;
-    SpriteArt.attach(player, 'PlayerSprite', 'images/characters/player_guardian_angel', 112, 112, 10, {
+    SpriteArt.attach(player, 'PlayerSprite', 'images/characters/player_guardian_angel', 88, 88, 10, {
       frameRect: { x: 8, y: 8, width: 298, height: 298 },
     });
     const playerSpriteNode = player.getChildByName('PlayerSprite');
@@ -1466,7 +1762,7 @@ export class BattleSceneController extends Component {
     const weapon = new Node('Weapon');
     weapon.setPosition(new Vec3(0, 0, 0));
     weapon.addComponent(UITransform).setContentSize(80, 16);
-    // 비대칭 칼날: 중심에서 오른쪽으로 뻗는 형태 → 회전 시 360도 방향으로 향함
+    // 검 충돌/데미지용 (시각은 styleWeaponNode에서 처리)
     const weaponG = weapon.addComponent(Graphics);
     weaponG.fillColor = new Color(255, 235, 80, 0);
     weaponG.roundRect(6, -4, 58, 8, 4);
@@ -1478,11 +1774,368 @@ export class BattleSceneController extends Component {
     const swordWeapon = weapon.addComponent(SwordWeapon);
     swordWeapon.damage = ProfileService.getWeaponDamage();
     player.addChild(weapon);
+    this.applyLoadoutVisuals(player, weapon);
 
     playerController.weaponNode = weapon;
+    playerController.setWorldRoot(this.ensureWorldRoot());
     this.playerController = playerController;
     this.swordWeaponRef = swordWeapon;
     this.baseWeaponDamage = swordWeapon.damage;
     this.node.addChild(player);
+  }
+
+  private applyLoadoutVisuals(player: Node, weapon: Node): void {
+    const profile = ProfileService.getProfile();
+    if (!profile) {
+      return;
+    }
+
+    player.getChildByName('LoadoutVisualRoot')?.destroy();
+
+    const root = new Node('LoadoutVisualRoot');
+    root.setPosition(0, 0, 0);
+    root.addComponent(UITransform).setContentSize(130, 130);
+    player.addChild(root);
+    root.setSiblingIndex(0);
+
+    if (profile.skillIds.includes('skill_star_burst')) {
+      this.createStarBurstSigil(root);
+    }
+    if (profile.skillIds.includes('skill_guardian_aura')) {
+      this.createGuardianAura(root);
+    }
+    // HeavenStrikeHalo visual removed (ring above head declutters character)
+    if (profile.skillIds.includes('skill_holy_dash')) {
+      this.createHolyDashWings(root);
+    }
+
+    for (const relicId of profile.relicIds) {
+      switch (relicId) {
+        case 'relic_holy_grail':
+          this.createHolyGrailCrown(root);
+          break;
+        case 'relic_broken_horn':
+          this.createBrokenHornAdornment(root);
+          break;
+        case 'relic_celestial_compass':
+          this.createCompassRing(root);
+          break;
+        case 'relic_laughter_mask':
+          this.createMaskCharm(root);
+          break;
+        case 'relic_guardian_feather':
+          this.createGuardianFeathers(root);
+          break;
+        case 'relic_golden_bell':
+          this.createGoldenBell(root);
+          break;
+        default:
+          break;
+      }
+    }
+
+    this.styleWeaponNode(weapon, profile.weaponId, profile.weaponLevel, profile.relicIds);
+  }
+
+  private styleWeaponNode(weapon: Node, weaponId: string, weaponLevel: number, relicIds: string[]): void {
+    const weaponGraphics = weapon.getComponent(Graphics);
+    if (!weaponGraphics) {
+      return;
+    }
+    weaponGraphics.clear();
+    return;
+
+    const hasHorn = relicIds.includes('relic_broken_horn');
+    const hasGrail = relicIds.includes('relic_holy_grail');
+    const bladeLength = 48 + Math.min(26, weaponLevel * 2);
+    const bladeHeight = weaponLevel >= 7 ? 9 : 7;
+    const bladeColor = hasHorn
+      ? new Color(255, 145, 120, 240)
+      : hasGrail
+        ? new Color(255, 230, 120, 228)
+        : new Color(225, 236, 255, 228);
+    const outlineColor = hasHorn
+      ? new Color(255, 95, 85, 255)
+      : new Color(255, 190, 70, 245);
+    const guardColor = weaponId === 'weapon_sword_001'
+      ? new Color(96, 170, 255, 212)
+      : new Color(150, 150, 220, 212);
+
+    weaponGraphics.clear();
+    weaponGraphics.strokeColor = new Color(255, 255, 255, 76);
+    weaponGraphics.lineWidth = 1;
+    weaponGraphics.moveTo(18, -1);
+    weaponGraphics.lineTo(18 + bladeLength - 10, -1);
+    weaponGraphics.stroke();
+    weaponGraphics.fillColor = bladeColor;
+    weaponGraphics.moveTo(14, -bladeHeight / 2);
+    weaponGraphics.lineTo(14 + bladeLength, -bladeHeight / 2);
+    weaponGraphics.lineTo(20 + bladeLength, 0);
+    weaponGraphics.lineTo(14 + bladeLength, bladeHeight / 2);
+    weaponGraphics.lineTo(14, bladeHeight / 2);
+    weaponGraphics.close();
+    weaponGraphics.fill();
+
+    weaponGraphics.fillColor = guardColor;
+    weaponGraphics.roundRect(8, -9, 12, 18, 5);
+    weaponGraphics.fill();
+    weaponGraphics.roundRect(0, -3, 18, 6, 3);
+    weaponGraphics.fill();
+    weaponGraphics.fillColor = new Color(255, 214, 122, 120);
+    weaponGraphics.circle(6, 0, 2.6);
+    weaponGraphics.fill();
+
+    weaponGraphics.strokeColor = outlineColor;
+    weaponGraphics.lineWidth = weaponLevel >= 8 ? 2 : 1.4;
+    weaponGraphics.moveTo(14, -bladeHeight / 2);
+    weaponGraphics.lineTo(14 + bladeLength, -bladeHeight / 2);
+    weaponGraphics.lineTo(20 + bladeLength, 0);
+    weaponGraphics.lineTo(14 + bladeLength, bladeHeight / 2);
+    weaponGraphics.lineTo(14, bladeHeight / 2);
+    weaponGraphics.close();
+    weaponGraphics.stroke();
+  }
+
+  private createGuardianAura(parent: Node): void {
+    const aura = new Node('GuardianAura');
+    aura.setPosition(0, -11, 0);
+    aura.addComponent(UITransform).setContentSize(84, 30);
+    const g = aura.addComponent(Graphics);
+    g.strokeColor = new Color(118, 228, 246, 108);
+    g.lineWidth = 2.5;
+    g.ellipse(0, 0, 34, 10);
+    g.stroke();
+    g.strokeColor = new Color(226, 248, 255, 180);
+    g.lineWidth = 1.1;
+    g.ellipse(0, 0, 29, 8);
+    g.stroke();
+    parent.addChild(aura);
+  }
+
+  private createStarBurstSigil(parent: Node): void {
+    const sigil = new Node('StarBurstSigil');
+    sigil.setPosition(0, -10, 0);
+    sigil.addComponent(UITransform).setContentSize(96, 96);
+    const g = sigil.addComponent(Graphics);
+    g.strokeColor = new Color(110, 176, 246, 92);
+    g.lineWidth = 1.0;
+    g.circle(0, 0, 14);
+    g.stroke();
+    for (let i = 0; i < 4; i += 1) {
+      const angle = (Math.PI / 2) * i;
+      g.moveTo(Math.cos(angle) * 8, Math.sin(angle) * 8);
+      g.lineTo(Math.cos(angle) * 22, Math.sin(angle) * 22);
+    }
+    g.stroke();
+    g.fillColor = new Color(255, 235, 130, 54);
+    g.moveTo(0, 19);
+    g.lineTo(6, 6);
+    g.lineTo(19, 0);
+    g.lineTo(6, -6);
+    g.lineTo(0, -19);
+    g.lineTo(-6, -6);
+    g.lineTo(-19, 0);
+    g.lineTo(-6, 6);
+    g.close();
+    g.fill();
+    parent.addChild(sigil);
+  }
+
+  private createHeavenStrikeHalo(parent: Node): void {
+    const halo = new Node('HeavenStrikeHalo');
+    halo.setPosition(0, 38, 0);
+    halo.addComponent(UITransform).setContentSize(90, 56);
+    const g = halo.addComponent(Graphics);
+    g.strokeColor = new Color(255, 232, 168, 96);
+    g.lineWidth = 3;
+    g.ellipse(0, 0, 22, 7);
+    g.stroke();
+    g.strokeColor = new Color(255, 247, 215, 210);
+    g.lineWidth = 1.3;
+    g.ellipse(0, 0, 18, 5);
+    g.stroke();
+    g.moveTo(0, 16);
+    g.lineTo(0, -14);
+    g.moveTo(-10, 1);
+    g.lineTo(10, 1);
+    g.stroke();
+    parent.addChild(halo);
+  }
+
+  private createHolyDashWings(parent: Node): void {
+    const wings = new Node('HolyDashWings');
+    wings.setPosition(0, 2, 0);
+    wings.addComponent(UITransform).setContentSize(96, 58);
+    const g = wings.addComponent(Graphics);
+    g.fillColor = new Color(155, 210, 255, 42);
+    g.moveTo(-13, 3);
+    g.lineTo(-38, 14);
+    g.lineTo(-24, -5);
+    g.close();
+    g.fill();
+    g.moveTo(13, 3);
+    g.lineTo(38, 14);
+    g.lineTo(24, -5);
+    g.close();
+    g.fill();
+    g.strokeColor = new Color(212, 236, 255, 120);
+    g.lineWidth = 1;
+    g.moveTo(-14, 3);
+    g.lineTo(-34, 10);
+    g.moveTo(14, 3);
+    g.lineTo(34, 10);
+    g.stroke();
+    parent.addChild(wings);
+  }
+
+  private createHolyGrailCrown(parent: Node): void {
+    const crown = new Node('HolyGrailCrown');
+    crown.setPosition(0, 24, 0);
+    crown.addComponent(UITransform).setContentSize(58, 28);
+    const g = crown.addComponent(Graphics);
+    g.fillColor = new Color(255, 218, 110, 156);
+    g.moveTo(-13, -3);
+    g.lineTo(-8, 8);
+    g.lineTo(0, 2);
+    g.lineTo(8, 8);
+    g.lineTo(13, -3);
+    g.lineTo(10, -8);
+    g.lineTo(-10, -8);
+    g.close();
+    g.fill();
+    g.strokeColor = new Color(255, 242, 194, 210);
+    g.lineWidth = 1;
+    g.moveTo(-10, -5);
+    g.lineTo(-7, 5);
+    g.lineTo(0, -1);
+    g.lineTo(7, 5);
+    g.lineTo(10, -5);
+    g.stroke();
+    parent.addChild(crown);
+  }
+
+  private createBrokenHornAdornment(parent: Node): void {
+    const horns = new Node('BrokenHornAdornment');
+    horns.setPosition(0, 19, 0);
+    horns.addComponent(UITransform).setContentSize(64, 32);
+    const g = horns.addComponent(Graphics);
+    g.fillColor = new Color(255, 126, 104, 150);
+    g.moveTo(-8, 5);
+    g.lineTo(-19, 14);
+    g.lineTo(-13, -2);
+    g.close();
+    g.fill();
+    g.moveTo(8, 5);
+    g.lineTo(19, 14);
+    g.lineTo(11, -3);
+    g.close();
+    g.fill();
+    g.strokeColor = new Color(255, 214, 196, 176);
+    g.lineWidth = 1;
+    g.moveTo(-9, 4);
+    g.lineTo(-15, 10);
+    g.moveTo(9, 4);
+    g.lineTo(15, 10);
+    g.stroke();
+    parent.addChild(horns);
+  }
+
+  private createCompassRing(parent: Node): void {
+    const compass = new Node('CelestialCompass');
+    compass.setPosition(0, -2, 0);
+    compass.addComponent(UITransform).setContentSize(104, 104);
+    const g = compass.addComponent(Graphics);
+    g.strokeColor = new Color(120, 180, 255, 88);
+    g.lineWidth = 2.0;
+    g.circle(0, 0, 30);
+    g.stroke();
+    g.strokeColor = new Color(190, 226, 255, 182);
+    g.lineWidth = 1.0;
+    g.circle(0, 0, 26);
+    g.stroke();
+    const ticks = [
+      [0, 35, 0, 24],
+      [0, -35, 0, -24],
+      [35, 0, 24, 0],
+      [-35, 0, -24, 0],
+    ] as const;
+    for (const [x1, y1, x2, y2] of ticks) {
+      g.moveTo(x1, y1);
+      g.lineTo(x2, y2);
+    }
+    g.stroke();
+    parent.addChild(compass);
+  }
+
+  private createMaskCharm(parent: Node): void {
+    const mask = new Node('LaughterMaskCharm');
+    mask.setPosition(22, 5, 0);
+    mask.addComponent(UITransform).setContentSize(30, 24);
+    const g = mask.addComponent(Graphics);
+    g.fillColor = new Color(210, 180, 255, 132);
+    g.roundRect(-8, -6, 16, 11, 5);
+    g.fill();
+    g.strokeColor = new Color(245, 232, 255, 188);
+    g.lineWidth = 1;
+    g.roundRect(-8, -6, 16, 11, 5);
+    g.stroke();
+    g.strokeColor = new Color(110, 60, 160, 176);
+    g.lineWidth = 1.0;
+    g.moveTo(-4, 1);
+    g.lineTo(-1, -1);
+    g.moveTo(1, -1);
+    g.lineTo(4, 1);
+    g.moveTo(-4, -2);
+    g.lineTo(0, -5);
+    g.lineTo(4, -2);
+    g.stroke();
+    parent.addChild(mask);
+  }
+
+  private createGuardianFeathers(parent: Node): void {
+    const feathers = new Node('GuardianFeathers');
+    feathers.setPosition(0, 0, 0);
+    feathers.addComponent(UITransform).setContentSize(96, 76);
+    const g = feathers.addComponent(Graphics);
+    g.fillColor = new Color(235, 245, 255, 72);
+    g.moveTo(-14, 0);
+    g.lineTo(-35, 13);
+    g.lineTo(-27, -13);
+    g.close();
+    g.fill();
+    g.moveTo(14, 0);
+    g.lineTo(35, 13);
+    g.lineTo(27, -13);
+    g.close();
+    g.fill();
+    g.strokeColor = new Color(255, 255, 255, 124);
+    g.lineWidth = 1;
+    g.moveTo(-14, 0);
+    g.lineTo(-29, 8);
+    g.moveTo(14, 0);
+    g.lineTo(29, 8);
+    g.stroke();
+    parent.addChild(feathers);
+  }
+
+  private createGoldenBell(parent: Node): void {
+    const bell = new Node('GoldenBell');
+    bell.setPosition(0, -5, 0);
+    bell.addComponent(UITransform).setContentSize(28, 28);
+    const g = bell.addComponent(Graphics);
+    g.fillColor = new Color(255, 205, 88, 156);
+    g.moveTo(-6, 5);
+    g.lineTo(6, 5);
+    g.lineTo(10, -6);
+    g.lineTo(-10, -6);
+    g.close();
+    g.fill();
+    g.strokeColor = new Color(255, 241, 186, 188);
+    g.lineWidth = 1;
+    g.roundRect(-6, -6, 12, 10, 4);
+    g.stroke();
+    g.circle(0, -8, 2);
+    g.fill();
+    parent.addChild(bell);
   }
 }
