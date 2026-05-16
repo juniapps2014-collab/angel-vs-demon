@@ -32,6 +32,7 @@ import { SpriteArt } from './SpriteArt';
 import { SpriteSheetAnimator } from './SpriteSheetAnimator';
 import { HoverMotion } from './HoverMotion';
 import { DirectionalSpriteAnimator } from './DirectionalSpriteAnimator';
+import { ProceduralBackground } from './ProceduralBackground';
 import { GameDataRepository } from '../data/GameDataRepository';
 
 const { ccclass } = _decorator;
@@ -117,10 +118,10 @@ export class BattleSceneController extends Component {
   };
 
   start(): void {
-    this.ensureBackground();
     this.ensureCanvas();
     this.ensureEnemyRoot();
     this.stageManager = this.ensureStageManager().getComponent(StageManager);
+    this.ensureBackground();
     this.ensureHud();
     this.ensurePlayer();
     this.refreshHud();
@@ -882,34 +883,44 @@ export class BattleSceneController extends Component {
   // ─── 시각 효과 ────────────────────────────────────────────────────────
 
   private ensureBackground(): void {
-    if (this.node.getChildByName('Background')) return;
+    if (this.node.getChildByName('Background') || this.node.getChildByName('ProceduralBg')) return;
 
-    BackgroundArt.apply(this.node, 'images/backgrounds/battle_forest', {
-      overlayColor: new Color(6, 10, 16, 255),
-      overlayAlpha: 96,
-    });
+    const stageId = this.stageManager?.getCurrentStageId() ?? 1;
+    const theme = ProceduralBackground.getTheme(stageId);
 
-    const bg = new Node('Background');
-    bg.setPosition(0, 0);
-    bg.addComponent(UITransform).setContentSize(1280, 720);
-    const g = bg.addComponent(Graphics);
+    if (theme !== 'none') {
+      // 절차적 배경 (이미지 없음)
+      ProceduralBackground.apply(this.node, stageId);
+    } else {
+      // 기존 이미지 배경 (stage 101~300, 401~1000)
+      BackgroundArt.apply(this.node, 'images/backgrounds/battle_forest', {
+        overlayColor: new Color(6, 10, 16, 255),
+        overlayAlpha: 96,
+      });
 
-    g.strokeColor = new Color(32, 48, 72, 115);
-    g.lineWidth = 1;
-    for (let x = -640; x <= 640; x += 80) {
-      g.moveTo(x, -360); g.lineTo(x, 360); g.stroke();
+      // 아레나 그리드 오버레이 (이미지 배경에만 추가)
+      const bg = new Node('Background');
+      bg.setPosition(0, 0);
+      bg.addComponent(UITransform).setContentSize(1280, 720);
+      const g = bg.addComponent(Graphics);
+
+      g.strokeColor = new Color(32, 48, 72, 115);
+      g.lineWidth = 1;
+      for (let x = -640; x <= 640; x += 80) {
+        g.moveTo(x, -360); g.lineTo(x, 360); g.stroke();
+      }
+      for (let y = -360; y <= 360; y += 80) {
+        g.moveTo(-640, y); g.lineTo(640, y); g.stroke();
+      }
+
+      g.strokeColor = new Color(55, 55, 110, 210);
+      g.lineWidth = 2;
+      g.rect(-575, -312, 1150, 624);
+      g.stroke();
+
+      this.node.addChild(bg);
+      bg.setSiblingIndex(1);
     }
-    for (let y = -360; y <= 360; y += 80) {
-      g.moveTo(-640, y); g.lineTo(640, y); g.stroke();
-    }
-
-    g.strokeColor = new Color(55, 55, 110, 210);
-    g.lineWidth = 2;
-    g.rect(-575, -312, 1150, 624);
-    g.stroke();
-
-    this.node.addChild(bg);
-    bg.setSiblingIndex(1);
   }
 
   private createBossHpBar(bossId: string): void {
